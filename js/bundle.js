@@ -1,0 +1,1155 @@
+// ─────────────────────────────────────────────
+// FrostTrack — single-file bundle (no ES modules)
+// ─────────────────────────────────────────────
+
+// ── defaults.js ──────────────────────────────
+
+const CATEGORIES = ['Protein', 'Produce', 'Full Meals', 'Desserts', 'Other'];
+
+const CATEGORY_DEFAULTS_MONTHS = {
+  'Protein':    4,
+  'Produce':    10,
+  'Full Meals': 3,
+  'Desserts':   6,
+  'Other':      3,
+};
+
+const UNIT_OPTIONS = {
+  'Protein':    ['lbs', 'oz', 'pieces', 'servings'],
+  'Produce':    ['bags', 'cups', 'oz', 'lbs'],
+  'Full Meals': ['servings', 'portions', 'containers'],
+  'Desserts':   ['servings', 'pieces', 'containers'],
+  'Other':      ['servings', 'cups', 'oz', 'lbs', 'pieces'],
+};
+
+const DEFAULT_UNIT = {
+  'Protein':    'lbs',
+  'Produce':    'bags',
+  'Full Meals': 'servings',
+  'Desserts':   'servings',
+  'Other':      'servings',
+};
+
+const CATEGORY_ICONS = {
+  'Protein':    '🥩',
+  'Produce':    '🥦',
+  'Full Meals': '🍱',
+  'Desserts':   '🍰',
+  'Other':      '📦',
+};
+
+const CATEGORY_BADGE_CLASS = {
+  'Protein':    'badge--protein',
+  'Produce':    'badge--produce',
+  'Full Meals': 'badge--meals',
+  'Desserts':   'badge--desserts',
+  'Other':      'badge--other',
+};
+
+const DEFAULT_ITEMS = [
+  { name: 'Chicken breasts',  category: 'Protein',    defaultUnit: 'lbs',      isDefault: true, useCount: 0 },
+  { name: 'Chicken thighs',   category: 'Protein',    defaultUnit: 'lbs',      isDefault: true, useCount: 0 },
+  { name: 'Ground beef',      category: 'Protein',    defaultUnit: 'lbs',      isDefault: true, useCount: 0 },
+  { name: 'Salmon fillets',   category: 'Protein',    defaultUnit: 'pieces',   isDefault: true, useCount: 0 },
+  { name: 'Shrimp',           category: 'Protein',    defaultUnit: 'lbs',      isDefault: true, useCount: 0 },
+  { name: 'Pork chops',       category: 'Protein',    defaultUnit: 'pieces',   isDefault: true, useCount: 0 },
+  { name: 'Steak',            category: 'Protein',    defaultUnit: 'pieces',   isDefault: true, useCount: 0 },
+  { name: 'Sausages',         category: 'Protein',    defaultUnit: 'pieces',   isDefault: true, useCount: 0 },
+  { name: 'Bacon',            category: 'Protein',    defaultUnit: 'lbs',      isDefault: true, useCount: 0 },
+  { name: 'Edamame',          category: 'Produce',    defaultUnit: 'bags',     isDefault: true, useCount: 0 },
+  { name: 'Peas',             category: 'Produce',    defaultUnit: 'bags',     isDefault: true, useCount: 0 },
+  { name: 'Corn',             category: 'Produce',    defaultUnit: 'bags',     isDefault: true, useCount: 0 },
+  { name: 'Spinach',          category: 'Produce',    defaultUnit: 'bags',     isDefault: true, useCount: 0 },
+  { name: 'Broccoli',         category: 'Produce',    defaultUnit: 'bags',     isDefault: true, useCount: 0 },
+  { name: 'Mixed vegetables', category: 'Produce',    defaultUnit: 'bags',     isDefault: true, useCount: 0 },
+  { name: 'Berries',          category: 'Produce',    defaultUnit: 'bags',     isDefault: true, useCount: 0 },
+  { name: 'Mango chunks',     category: 'Produce',    defaultUnit: 'bags',     isDefault: true, useCount: 0 },
+  { name: 'Lasagna',          category: 'Full Meals', defaultUnit: 'servings', isDefault: true, useCount: 0 },
+  { name: 'Soup',             category: 'Full Meals', defaultUnit: 'servings', isDefault: true, useCount: 0 },
+  { name: 'Chili',            category: 'Full Meals', defaultUnit: 'servings', isDefault: true, useCount: 0 },
+  { name: 'Curry',            category: 'Full Meals', defaultUnit: 'servings', isDefault: true, useCount: 0 },
+  { name: 'Pasta sauce',      category: 'Full Meals', defaultUnit: 'servings', isDefault: true, useCount: 0 },
+  { name: 'Stir fry',        category: 'Full Meals', defaultUnit: 'servings', isDefault: true, useCount: 0 },
+  { name: 'Burritos',         category: 'Full Meals', defaultUnit: 'servings', isDefault: true, useCount: 0 },
+  { name: 'Waffles',          category: 'Desserts',   defaultUnit: 'pieces',   isDefault: true, useCount: 0 },
+  { name: 'Pie',              category: 'Desserts',   defaultUnit: 'servings', isDefault: true, useCount: 0 },
+  { name: 'Ice cream',        category: 'Desserts',   defaultUnit: 'servings', isDefault: true, useCount: 0 },
+  { name: 'Cookies',          category: 'Desserts',   defaultUnit: 'pieces',   isDefault: true, useCount: 0 },
+  { name: 'Bread',            category: 'Other',      defaultUnit: 'servings', isDefault: true, useCount: 0 },
+  { name: 'Tortillas',        category: 'Other',      defaultUnit: 'pieces',   isDefault: true, useCount: 0 },
+  { name: 'Stocks / broth',   category: 'Other',      defaultUnit: 'servings', isDefault: true, useCount: 0 },
+  { name: 'Butter',           category: 'Other',      defaultUnit: 'lbs',      isDefault: true, useCount: 0 },
+];
+
+// ── utils.js ──────────────────────────────────
+
+function generateId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+function today() {
+  return toDateString(new Date());
+}
+
+function toDateString(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function daysUntil(dateStr) {
+  const target = new Date(dateStr + 'T00:00:00');
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return Math.ceil((target - now) / 86400000);
+}
+
+function addMonths(dateStr, months) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const targetMonth = d.getMonth() + months;
+  const result = new Date(d);
+  result.setMonth(targetMonth);
+  if (result.getMonth() !== ((targetMonth % 12) + 12) % 12) {
+    result.setDate(0);
+  }
+  return toDateString(result);
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  const thisYear = new Date().getFullYear();
+  const opts = d.getFullYear() === thisYear
+    ? { month: 'short', day: 'numeric' }
+    : { month: 'short', day: 'numeric', year: 'numeric' };
+  return d.toLocaleDateString('en-US', opts);
+}
+
+function getExpiryClass(days) {
+  if (days <= 0)  return 'days-chip--past';
+  if (days <= 7)  return 'days-chip--urgent';
+  if (days <= 30) return 'days-chip--soon';
+  return 'days-chip--ok';
+}
+
+function getDaysLabel(days) {
+  if (days < 0)   return `${Math.abs(days)}d ago`;
+  if (days === 0) return 'Today';
+  if (days === 1) return '1 day';
+  return `${days} days`;
+}
+
+function debounce(fn, ms) {
+  let timer;
+  return function (...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), ms);
+  };
+}
+
+function groupBy(array, keyFn) {
+  return array.reduce((acc, item) => {
+    const key = keyFn(item);
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {});
+}
+
+function escHtml(str) {
+  return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── store.js ──────────────────────────────────
+
+const STORE_KEYS = {
+  inventory: 'frosttrack_inventory',
+  shopping:  'frosttrack_shopping',
+  items:     'frosttrack_items',
+  settings:  'frosttrack_settings',
+};
+
+const DEFAULT_SETTINGS = {
+  anthropicApiKey: '',
+  categoryDefaults: { ...CATEGORY_DEFAULTS_MONTHS },
+};
+
+function storeRead(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function storeWrite(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+
+function initStore() {
+  if (storeRead(STORE_KEYS.inventory) === null) storeWrite(STORE_KEYS.inventory, []);
+  if (storeRead(STORE_KEYS.shopping)  === null) storeWrite(STORE_KEYS.shopping,  []);
+  if (storeRead(STORE_KEYS.items)     === null) storeWrite(STORE_KEYS.items, DEFAULT_ITEMS.map(i => ({...i})));
+  const existing = storeRead(STORE_KEYS.settings) || {};
+  storeWrite(STORE_KEYS.settings, {
+    ...DEFAULT_SETTINGS, ...existing,
+    categoryDefaults: { ...DEFAULT_SETTINGS.categoryDefaults, ...(existing.categoryDefaults || {}) },
+  });
+}
+
+function getInventory() {
+  const items = storeRead(STORE_KEYS.inventory) || [];
+  return [...items].sort((a, b) => {
+    if (!a.useByDate) return 1;
+    if (!b.useByDate) return -1;
+    return a.useByDate.localeCompare(b.useByDate);
+  });
+}
+
+function addInventoryItem(partial) {
+  const items = storeRead(STORE_KEYS.inventory) || [];
+  const item = { id: generateId(), name: '', category: 'Other', quantity: 1, unit: 'servings',
+    dateFrozen: today(), useByDate: '', addedAt: new Date().toISOString(), ...partial };
+  items.push(item);
+  storeWrite(STORE_KEYS.inventory, items);
+  return item;
+}
+
+function updateInventoryItem(id, changes) {
+  const items = storeRead(STORE_KEYS.inventory) || [];
+  const idx = items.findIndex(i => i.id === id);
+  if (idx === -1) return;
+  items[idx] = { ...items[idx], ...changes };
+  storeWrite(STORE_KEYS.inventory, items);
+}
+
+function removeInventoryItem(id) {
+  const items = storeRead(STORE_KEYS.inventory) || [];
+  storeWrite(STORE_KEYS.inventory, items.filter(i => i.id !== id));
+}
+
+function getInventoryItem(id) {
+  return (storeRead(STORE_KEYS.inventory) || []).find(i => i.id === id) || null;
+}
+
+function getShoppingList() { return storeRead(STORE_KEYS.shopping) || []; }
+
+function addShoppingItem(partial) {
+  const items = storeRead(STORE_KEYS.shopping) || [];
+  const item = { id: generateId(), name: '', category: null, note: '', completed: false,
+    addedAt: new Date().toISOString(), ...partial };
+  items.push(item);
+  storeWrite(STORE_KEYS.shopping, items);
+  return item;
+}
+
+function updateShoppingItem(id, changes) {
+  const items = storeRead(STORE_KEYS.shopping) || [];
+  const idx = items.findIndex(i => i.id === id);
+  if (idx === -1) return;
+  items[idx] = { ...items[idx], ...changes };
+  storeWrite(STORE_KEYS.shopping, items);
+}
+
+function toggleShoppingItem(id) {
+  const items = storeRead(STORE_KEYS.shopping) || [];
+  const idx = items.findIndex(i => i.id === id);
+  if (idx !== -1) { items[idx].completed = !items[idx].completed; storeWrite(STORE_KEYS.shopping, items); }
+}
+
+function removeShoppingItem(id) {
+  storeWrite(STORE_KEYS.shopping, (storeRead(STORE_KEYS.shopping) || []).filter(i => i.id !== id));
+}
+
+function clearCompletedShopping() {
+  storeWrite(STORE_KEYS.shopping, (storeRead(STORE_KEYS.shopping) || []).filter(i => !i.completed));
+}
+
+function getItemList() {
+  return [...(storeRead(STORE_KEYS.items) || [])].sort((a, b) => {
+    if (!a.isDefault && b.isDefault) return -1;
+    if (a.isDefault && !b.isDefault) return 1;
+    return (b.useCount || 0) - (a.useCount || 0);
+  });
+}
+
+function getItemByName(name) {
+  return (storeRead(STORE_KEYS.items) || []).find(i => i.name.toLowerCase() === name.toLowerCase()) || null;
+}
+
+function addToItemList(item) {
+  const items = storeRead(STORE_KEYS.items) || [];
+  if (items.find(i => i.name.toLowerCase() === item.name.toLowerCase())) return;
+  items.push({ useCount: 0, isDefault: false, ...item });
+  storeWrite(STORE_KEYS.items, items);
+}
+
+function removeFromItemList(name) {
+  storeWrite(STORE_KEYS.items, (storeRead(STORE_KEYS.items) || []).filter(i => i.name.toLowerCase() !== name.toLowerCase()));
+}
+
+function incrementItemUseCount(name) {
+  const items = storeRead(STORE_KEYS.items) || [];
+  const idx = items.findIndex(i => i.name.toLowerCase() === name.toLowerCase());
+  if (idx !== -1) { items[idx].useCount = (items[idx].useCount || 0) + 1; storeWrite(STORE_KEYS.items, items); }
+}
+
+function getSettings() { return storeRead(STORE_KEYS.settings) || { ...DEFAULT_SETTINGS }; }
+
+function saveSettings(changes) {
+  const current = getSettings();
+  storeWrite(STORE_KEYS.settings, {
+    ...current, ...changes,
+    categoryDefaults: { ...current.categoryDefaults, ...(changes.categoryDefaults || {}) },
+  });
+}
+
+function clearAllData() { Object.values(STORE_KEYS).forEach(k => localStorage.removeItem(k)); }
+
+// ── claude.js ─────────────────────────────────
+
+async function classifyItem(name, signal) {
+  const settings = getSettings();
+  if (!settings.anthropicApiKey) return null;
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', signal,
+      headers: {
+        'x-api-key': settings.anthropicApiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514', max_tokens: 10,
+        messages: [{ role: 'user', content: `Given the food item name "${name}", classify it into exactly one of these freezer categories: Protein, Produce, Full Meals, Desserts, Other. Respond with only the category name, nothing else.` }],
+      }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const text = data.content?.[0]?.text?.trim();
+    return ['Protein','Produce','Full Meals','Desserts','Other'].includes(text) ? text : null;
+  } catch (e) {
+    if (e.name === 'AbortError') throw e;
+    return null;
+  }
+}
+
+// ── components/bottomSheet.js ─────────────────
+
+let _sheetOnSave = null;
+let _sheetInitialized = false;
+
+function initSheet() {
+  if (_sheetInitialized) return;
+  _sheetInitialized = true;
+  document.getElementById('sheetBackdrop').addEventListener('click', hideSheet);
+}
+
+function showSheet(contentHTML, { onSave, onCancel } = {}) {
+  initSheet();
+  _sheetOnSave = onSave || null;
+  const el = document.getElementById('bottomSheet');
+  el.innerHTML = contentHTML;
+  el.classList.add('is-open');
+  document.getElementById('sheetBackdrop').classList.add('is-open');
+  el.querySelector('[data-action="save"]')?.addEventListener('click', () => { if (_sheetOnSave) _sheetOnSave(); });
+  el.querySelector('[data-action="cancel"]')?.addEventListener('click', () => { hideSheet(); if (onCancel) onCancel(); });
+  setTimeout(() => el.querySelector('input, select, textarea')?.focus(), 340);
+}
+
+function hideSheet() {
+  const el = document.getElementById('bottomSheet');
+  el.classList.remove('is-open');
+  document.getElementById('sheetBackdrop').classList.remove('is-open');
+  el.addEventListener('transitionend', () => { el.innerHTML = ''; _sheetOnSave = null; }, { once: true });
+}
+
+// ── components/toast.js ───────────────────────
+
+function showToast(message, { action, actionLabel = 'Add', duration = 4000 } = {}) {
+  const container = document.getElementById('toastContainer');
+  const existing = container.querySelectorAll('.toast');
+  if (existing.length >= 3) dismissToast(existing[0]);
+
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  const msgSpan = document.createElement('span');
+  msgSpan.textContent = message;
+  toast.appendChild(msgSpan);
+  if (action) {
+    const btn = document.createElement('button');
+    btn.className = 'toast__action';
+    btn.textContent = actionLabel;
+    btn.addEventListener('click', () => { action(); dismissToast(toast); });
+    toast.appendChild(btn);
+  }
+  container.appendChild(toast);
+  requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add('is-visible')));
+  toast._timer = setTimeout(() => dismissToast(toast), duration);
+}
+
+function dismissToast(toast) {
+  clearTimeout(toast._timer);
+  toast.classList.remove('is-visible');
+  toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+}
+
+// ── components/swipeReveal.js ─────────────────
+
+let _openSwipeCard = null;
+
+function initSwipeReveal(cardElement, { onUsedItAll, onDelete }) {
+  const content = cardElement.querySelector('.swipe-card__content');
+  if (!content) return;
+  let startX = 0, startY = 0, currentX = 0, isDecided = false, isHorizontal = false;
+
+  cardElement.querySelector('[data-swipe-action="used"]')?.addEventListener('click', e => {
+    e.stopPropagation(); snapClose(); if (onUsedItAll) onUsedItAll();
+  });
+  cardElement.querySelector('[data-swipe-action="delete"]')?.addEventListener('click', e => {
+    e.stopPropagation(); snapClose(); if (onDelete) onDelete();
+  });
+
+  content.addEventListener('touchstart', e => {
+    const t = e.touches[0];
+    startX = t.clientX; startY = t.clientY; currentX = 0; isDecided = false; isHorizontal = false;
+    content.classList.remove('is-snapping'); content.classList.add('is-swiping');
+  }, { passive: true });
+
+  content.addEventListener('touchmove', e => {
+    const t = e.touches[0];
+    const dx = t.clientX - startX, dy = t.clientY - startY;
+    if (!isDecided) {
+      if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+      isDecided = true; isHorizontal = Math.abs(dx) > Math.abs(dy);
+    }
+    if (!isHorizontal) return;
+    e.preventDefault();
+    const offset = _openSwipeCard === cardElement ? -160 : 0;
+    currentX = Math.min(0, Math.max(-160, dx + offset));
+    content.style.transform = `translateX(${currentX}px)`;
+  }, { passive: false });
+
+  content.addEventListener('touchend', () => {
+    content.classList.remove('is-swiping'); content.classList.add('is-snapping');
+    if (currentX < -80) snapOpen(); else snapClose();
+  }, { passive: true });
+
+  document.addEventListener('swipeopen', e => { if (e.detail.card !== cardElement) snapClose(); });
+
+  function snapOpen() {
+    content.style.transform = 'translateX(-160px)';
+    _openSwipeCard = cardElement;
+    document.dispatchEvent(new CustomEvent('swipeopen', { detail: { card: cardElement } }));
+  }
+  function snapClose() {
+    content.classList.add('is-snapping');
+    content.style.transform = 'translateX(0)';
+    if (_openSwipeCard === cardElement) _openSwipeCard = null;
+  }
+}
+
+// ── tabs/home.js ──────────────────────────────
+
+let _homeContainer = null;
+
+function mountHome(el) {
+  _homeContainer = el;
+  el.innerHTML = `
+    <div id="summaryStrip" class="summary-strip"></div>
+    <div id="expiringSection"></div>
+    <div class="quick-actions">
+      <button class="btn" id="btnHeatUp"><span class="quick-action__icon">🔥</span>Just heat it up</button>
+      <button class="btn" id="btnCooking"><span class="quick-action__icon">🍳</span>I'm cooking</button>
+    </div>`;
+  el.querySelector('#btnHeatUp').addEventListener('click', () => switchTab('meals', 'heat'));
+  el.querySelector('#btnCooking').addEventListener('click', () => switchTab('meals', 'cook'));
+  refreshHome();
+}
+
+function refreshHome() {
+  if (!_homeContainer) return;
+  const inventory = getInventory();
+  const shopping  = getShoppingList();
+  const urgent    = inventory.filter(i => daysUntil(i.useByDate) <= 7).length;
+  _homeContainer.querySelector('#summaryStrip').innerHTML = `
+    <div class="summary-pill"><div class="summary-pill__val">${inventory.length}</div><div class="summary-pill__label">In Freezer</div></div>
+    <div class="summary-pill"><div class="summary-pill__val ${urgent > 0 ? 'has-alert' : ''}">${urgent}</div><div class="summary-pill__label">Expiring Soon</div></div>
+    <div class="summary-pill"><div class="summary-pill__val">${shopping.filter(i=>!i.completed).length}</div><div class="summary-pill__label">To Buy</div></div>`;
+
+  const expiring = inventory.filter(i => daysUntil(i.useByDate) <= 30).sort((a,b) => a.useByDate.localeCompare(b.useByDate));
+  const section  = _homeContainer.querySelector('#expiringSection');
+  if (expiring.length === 0) {
+    section.innerHTML = `<div class="empty-state" style="padding:32px 0 16px"><div class="empty-state__icon">✅</div><div class="empty-state__title">Your freezer looks good!</div><div class="empty-state__subtitle">Nothing expiring in the next 30 days.</div></div>`;
+    return;
+  }
+  let html = `<div class="section-header">⏰ Expiring Soon</div>`;
+  expiring.forEach((item, i) => {
+    const days = daysUntil(item.useByDate);
+    html += `<div class="expiry-card animate-slide-up" style="--i:${i}">
+      <div class="expiry-card__info">
+        <div class="expiry-card__name">${escHtml(item.name)}</div>
+        <div class="expiry-card__qty"><span class="badge ${CATEGORY_BADGE_CLASS[item.category]||'badge--other'}">${item.category}</span>&nbsp;${item.quantity} ${escHtml(item.unit)}</div>
+      </div>
+      <span class="days-chip days-chip--large ${getExpiryClass(days)}">${getDaysLabel(days)}</span>
+    </div>`;
+  });
+  section.innerHTML = html;
+}
+
+// ── tabs/inventory.js ─────────────────────────
+
+let _invContainer = null;
+let _invListEl    = null;
+let _invSearch    = '';
+
+function mountInventory(el) {
+  _invContainer = el;
+  el.innerHTML = `
+    <div class="search-wrap">
+      <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      <input class="search-input" id="inventorySearch" type="search" placeholder="Search inventory…" autocomplete="off">
+    </div>
+    <div id="inventoryList"></div>`;
+  _invListEl = el.querySelector('#inventoryList');
+  el.querySelector('#inventorySearch').addEventListener('input', e => { _invSearch = e.target.value.trim().toLowerCase(); renderInventory(); });
+  _invListEl.addEventListener('click', e => {
+    const minus   = e.target.closest('.minus-btn');
+    const confirm = e.target.closest('[data-action="confirm-used"]');
+    const cancel  = e.target.closest('[data-action="cancel-used"]');
+    const card    = e.target.closest('.swipe-card__content');
+    if (minus)   { e.stopPropagation(); invHandleDecrement(minus.dataset.id); return; }
+    if (confirm) { e.stopPropagation(); invHandleUsedItAll(confirm.dataset.id); return; }
+    if (cancel)  { e.stopPropagation(); const item = getInventoryItem(cancel.dataset.id); if (item) updateInventoryItem(item.id, {quantity:1}); renderInventory(); return; }
+    if (card)    { openEditSheet(card.dataset.id); }
+  });
+  renderInventory();
+}
+
+function refreshInventory() { renderInventory(); }
+
+function renderInventory() {
+  if (!_invListEl) return;
+  const all = getInventory();
+  const filtered = _invSearch ? all.filter(i => i.name.toLowerCase().includes(_invSearch)) : all;
+  if (all.length === 0) {
+    _invListEl.innerHTML = `<div class="empty-state"><div class="empty-state__icon">🧊</div><div class="empty-state__title">Your freezer is empty</div><div class="empty-state__subtitle">Tap + to add your first item</div></div>`;
+    return;
+  }
+  if (filtered.length === 0) {
+    _invListEl.innerHTML = `<div class="empty-state"><div class="empty-state__icon">🔍</div><div class="empty-state__title">No items match</div><div class="empty-state__subtitle">"${escHtml(_invSearch)}"</div></div>`;
+    return;
+  }
+  const grouped = groupBy(filtered, i => i.category);
+  let html = '', idx = 0;
+  CATEGORIES.forEach(cat => {
+    const items = grouped[cat];
+    if (!items || !items.length) return;
+    html += `<div class="section-header">${CATEGORY_ICONS[cat]} ${cat}</div>`;
+    items.forEach(item => { html += renderInvCard(item, idx++); });
+  });
+  _invListEl.innerHTML = html;
+  _invListEl.querySelectorAll('.swipe-card').forEach(cardEl => {
+    const id = cardEl.dataset.id;
+    initSwipeReveal(cardEl, { onUsedItAll: () => invHandleUsedItAll(id), onDelete: () => { removeInventoryItem(id); renderInventory(); } });
+  });
+}
+
+function renderInvCard(item, index) {
+  const days = daysUntil(item.useByDate);
+  return `
+    <div class="swipe-card animate-slide-up" data-id="${item.id}" style="--i:${index}">
+      <div class="swipe-card__actions">
+        <button class="swipe-action swipe-action--used" data-swipe-action="used"><span class="swipe-action__icon">✓</span><span>Used it</span></button>
+        <button class="swipe-action swipe-action--delete" data-swipe-action="delete"><span class="swipe-action__icon">🗑</span><span>Delete</span></button>
+      </div>
+      <div class="swipe-card__content" data-id="${item.id}">
+        <div class="swipe-card__main">
+          <div class="swipe-card__meta" style="margin-bottom:6px"><span class="badge ${CATEGORY_BADGE_CLASS[item.category]||'badge--other'}">${item.category}</span></div>
+          <div class="swipe-card__name">${escHtml(item.name)}</div>
+          <div class="swipe-card__meta">
+            <span class="swipe-card__qty">${item.quantity} ${escHtml(item.unit)}</span>
+            <span class="swipe-card__date">${formatDate(item.useByDate)}</span>
+          </div>
+        </div>
+        <div class="swipe-card__right">
+          <span class="days-chip ${getExpiryClass(days)}">${getDaysLabel(days)}</span>
+          <button class="minus-btn" data-id="${item.id}">−</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function invHandleDecrement(id) {
+  const item = getInventoryItem(id);
+  if (!item) return;
+  if (item.quantity > 1) { updateInventoryItem(id, {quantity: item.quantity - 1}); renderInventory(); return; }
+  updateInventoryItem(id, {quantity: 0});
+  const right = _invListEl.querySelector(`.swipe-card__content[data-id="${id}"] .swipe-card__right`);
+  if (right) right.innerHTML = `
+    <button class="btn btn--ghost" style="font-size:12px;padding:6px 10px" data-action="confirm-used" data-id="${id}">Used it all</button>
+    <button class="btn btn--icon" style="font-size:18px" data-action="cancel-used" data-id="${id}">✕</button>`;
+}
+
+function invHandleUsedItAll(id) {
+  const item = getInventoryItem(id);
+  if (!item) return;
+  const { name, category } = item;
+  removeInventoryItem(id);
+  renderInventory();
+  showToast(`Gone! Add ${name} to your shopping list?`, { actionLabel: 'Add', action: () => {
+    const known = getItemByName(name);
+    addShoppingItem({ name, category: known?.category || category });
+    refreshShopping();
+  }});
+}
+
+function openEditSheet(id) {
+  const item = getInventoryItem(id);
+  if (!item) return;
+  const catOpts  = CATEGORIES.map(c => `<option value="${c}" ${c===item.category?'selected':''}>${c}</option>`).join('');
+  const unitOpts = (UNIT_OPTIONS[item.category]||UNIT_OPTIONS['Other']).map(u => `<option value="${u}" ${u===item.unit?'selected':''}>${u}</option>`).join('');
+  showSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-header"><h2>Edit Item</h2><button class="btn btn--icon" data-action="cancel">✕</button></div>
+    <div class="sheet-body">
+      <input type="hidden" id="editId" value="${item.id}">
+      <div class="form-row"><div class="input-group"><label class="input-label">Name</label><input class="input" id="editName" type="text" value="${escHtml(item.name)}" autocomplete="off"></div></div>
+      <div class="form-row"><div class="input-group"><label class="input-label">Category</label><select class="input" id="editCategory">${catOpts}</select></div></div>
+      <div class="form-row form-row--inline">
+        <div class="input-group"><label class="input-label">Quantity</label><input class="input" id="editQty" type="number" min="0" step="0.5" value="${item.quantity}"></div>
+        <div class="input-group"><label class="input-label">Unit</label><select class="input" id="editUnit">${unitOpts}</select></div>
+      </div>
+      <div class="form-row"><div class="input-group"><label class="input-label">Date Frozen</label><input class="input" id="editDateFrozen" type="date" value="${item.dateFrozen||''}"></div></div>
+      <div class="form-row"><div class="input-group"><label class="input-label">Use By</label><input class="input" id="editUseBy" type="date" value="${item.useByDate||''}"></div></div>
+    </div>
+    <div class="sheet-footer">
+      <button class="btn btn--ghost" style="flex:1" data-action="cancel">Cancel</button>
+      <button class="btn btn--primary" style="flex:2" data-action="save">Save</button>
+    </div>`, {
+    onSave: () => {
+      const el = document.getElementById('bottomSheet');
+      const changes = {
+        name:       el.querySelector('#editName').value.trim(),
+        category:   el.querySelector('#editCategory').value,
+        quantity:   parseFloat(el.querySelector('#editQty').value) || 1,
+        unit:       el.querySelector('#editUnit').value,
+        dateFrozen: el.querySelector('#editDateFrozen').value,
+        useByDate:  el.querySelector('#editUseBy').value,
+      };
+      if (!changes.name) return;
+      updateInventoryItem(item.id, changes);
+      hideSheet();
+      renderInventory();
+    },
+  });
+  setTimeout(() => {
+    const catSel = document.getElementById('editCategory');
+    const unitSel = document.getElementById('editUnit');
+    if (catSel && unitSel) {
+      catSel.addEventListener('change', () => {
+        const units = UNIT_OPTIONS[catSel.value] || UNIT_OPTIONS['Other'];
+        unitSel.innerHTML = units.map(u => `<option value="${u}">${u}</option>`).join('');
+        unitSel.value = DEFAULT_UNIT[catSel.value] || units[0];
+      });
+    }
+  }, 50);
+}
+
+// ── tabs/add.js ───────────────────────────────
+
+let _addContainer    = null;
+let _addCategory     = null;
+let _addQuantity     = 1;
+let _classifyCtrl    = null;
+
+function mountAdd(el) {
+  _addContainer = el;
+  el.innerHTML = `
+    <h2 style="font-size:18px;font-weight:600;margin-bottom:20px">Add to Freezer</h2>
+    <div class="form-row"><div class="input-group"><label class="input-label">Item Name</label>
+      <div class="autocomplete-wrap">
+        <input class="input" id="addName" type="text" placeholder="e.g. Chicken thighs" autocomplete="off" autocorrect="off">
+        <ul class="autocomplete-list" id="addAutocomplete" hidden></ul>
+      </div></div></div>
+    <div class="form-row"><div class="input-label" style="margin-bottom:8px">Category</div>
+      <div class="chip-group" id="catChips">
+        ${CATEGORIES.map(c => `<button type="button" class="chip" data-cat="${c}">${CATEGORY_ICONS[c]} ${c}</button>`).join('')}
+      </div></div>
+    <div class="form-row"><div class="input-label" style="margin-bottom:8px">Quantity</div>
+      <div style="display:flex;gap:12px;align-items:center">
+        <div class="stepper">
+          <button type="button" class="stepper__btn" id="addQtyMinus">−</button>
+          <span class="stepper__val" id="addQtyVal">1</span>
+          <button type="button" class="stepper__btn" id="addQtyPlus">+</button>
+        </div>
+        <select class="input" id="addUnit" style="width:120px;flex-shrink:0"></select>
+      </div></div>
+    <div class="form-row form-row--inline">
+      <div class="input-group"><label class="input-label">Date Frozen</label><input class="input" id="addDateFrozen" type="date"></div>
+      <div class="input-group"><label class="input-label">Use By</label><input class="input" id="addUseBy" type="date"></div>
+    </div>
+    <div style="margin-top:8px"><button class="btn btn--primary" id="addSaveBtn" type="button">Save to Freezer</button></div>`;
+
+  const nameInput = el.querySelector('#addName');
+  const autocomplete = el.querySelector('#addAutocomplete');
+
+  const debouncedClassify = debounce(async (name) => {
+    if (!name || name.length < 3 || !getSettings().anthropicApiKey) return;
+    if (_classifyCtrl) _classifyCtrl.abort();
+    _classifyCtrl = new AbortController();
+    el.querySelector('#catChips').classList.add('is-loading');
+    try {
+      const cat = await classifyItem(name, _classifyCtrl.signal);
+      el.querySelector('#catChips').classList.remove('is-loading');
+      if (cat) addSelectCategory(cat);
+    } catch(e) {
+      el.querySelector('#catChips').classList.remove('is-loading');
+      if (e.name !== 'AbortError') console.warn('Classify failed', e);
+    }
+  }, 500);
+
+  nameInput.addEventListener('input', e => {
+    addPopulateAutocomplete(e.target.value.trim());
+    debouncedClassify(e.target.value.trim());
+  });
+  nameInput.addEventListener('focusout', () => setTimeout(() => { autocomplete.hidden = true; }, 150));
+
+  autocomplete.addEventListener('click', e => {
+    const item = e.target.closest('.autocomplete-item');
+    if (!item) return;
+    nameInput.value = item.dataset.name;
+    autocomplete.hidden = true;
+    if (item.dataset.cat) addSelectCategory(item.dataset.cat);
+  });
+
+  el.querySelector('#catChips').addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (chip) addSelectCategory(chip.dataset.cat);
+  });
+
+  el.querySelector('#addQtyMinus').addEventListener('click', () => {
+    _addQuantity = Math.max(0.5, _addQuantity - 1);
+    el.querySelector('#addQtyVal').textContent = _addQuantity % 1 === 0 ? _addQuantity : _addQuantity.toFixed(1);
+  });
+  el.querySelector('#addQtyPlus').addEventListener('click', () => {
+    _addQuantity += 1;
+    el.querySelector('#addQtyVal').textContent = _addQuantity;
+  });
+
+  el.querySelector('#addSaveBtn').addEventListener('click', handleAddSave);
+  addResetForm();
+}
+
+function refreshAdd() {}
+
+function addPopulateAutocomplete(val) {
+  const list = _addContainer.querySelector('#addAutocomplete');
+  if (!val) { list.hidden = true; return; }
+  const matches = getItemList().filter(i => i.name.toLowerCase().startsWith(val.toLowerCase())).slice(0, 8);
+  if (!matches.length) { list.hidden = true; return; }
+  list.innerHTML = matches.map(i => `<li class="autocomplete-item" data-name="${escHtml(i.name)}" data-cat="${escHtml(i.category||'')}"><span>${escHtml(i.name)}</span><span class="autocomplete-item__badge">${i.category||''}</span></li>`).join('');
+  list.hidden = false;
+}
+
+function addSelectCategory(cat) {
+  _addCategory = cat;
+  _addContainer.querySelectorAll('#catChips .chip').forEach(c => c.classList.toggle('is-selected', c.dataset.cat === cat));
+  const units = UNIT_OPTIONS[cat] || UNIT_OPTIONS['Other'];
+  const unitSel = _addContainer.querySelector('#addUnit');
+  unitSel.innerHTML = units.map(u => `<option value="${u}">${u}</option>`).join('');
+  unitSel.value = DEFAULT_UNIT[cat] || units[0];
+  const settings = getSettings();
+  const months = (settings.categoryDefaults && settings.categoryDefaults[cat]) || CATEGORY_DEFAULTS_MONTHS[cat] || 3;
+  _addContainer.querySelector('#addUseBy').value = addMonths(today(), months);
+}
+
+function handleAddSave() {
+  const nameInput = _addContainer.querySelector('#addName');
+  const name = nameInput.value.trim();
+  if (!name) { nameInput.focus(); nameInput.style.borderColor='var(--color-red)'; setTimeout(()=>nameInput.style.borderColor='',1500); return; }
+  if (!_addCategory) {
+    const chips = _addContainer.querySelector('#catChips');
+    chips.style.outline='2px solid var(--color-red)'; chips.style.borderRadius='8px';
+    setTimeout(()=>{ chips.style.outline=''; },1500); return;
+  }
+  const unit       = _addContainer.querySelector('#addUnit')?.value || DEFAULT_UNIT[_addCategory] || 'servings';
+  const dateFrozen = _addContainer.querySelector('#addDateFrozen').value || today();
+  const useByDate  = _addContainer.querySelector('#addUseBy').value || addMonths(dateFrozen, CATEGORY_DEFAULTS_MONTHS[_addCategory]||3);
+  addInventoryItem({ name, category: _addCategory, quantity: _addQuantity, unit, dateFrozen, useByDate });
+  incrementItemUseCount(name);
+  if (!getItemByName(name)) addToItemList({ name, category: _addCategory, defaultUnit: unit, isDefault: false, useCount: 1 });
+
+  const btn = _addContainer.querySelector('#addSaveBtn');
+  btn.textContent = 'Saved! ✓'; btn.disabled = true;
+  setTimeout(() => { btn.textContent = 'Save to Freezer'; btn.disabled = false; addResetForm(); }, 1500);
+  refreshHome(); refreshInventory();
+}
+
+function addResetForm() {
+  if (!_addContainer) return;
+  _addContainer.querySelector('#addName').value = '';
+  _addContainer.querySelector('#addAutocomplete').hidden = true;
+  _addContainer.querySelector('#addDateFrozen').value = today();
+  _addQuantity = 1;
+  _addContainer.querySelector('#addQtyVal').textContent = '1';
+  _addCategory = null;
+  _addContainer.querySelectorAll('#catChips .chip').forEach(c => c.classList.remove('is-selected'));
+  _addContainer.querySelector('#addUnit').innerHTML = '';
+  _addContainer.querySelector('#addUseBy').value = '';
+  _addContainer.querySelector('#addName').focus();
+}
+
+// ── tabs/shopping.js ──────────────────────────
+
+let _shopContainer = null;
+
+function mountShopping(el) {
+  _shopContainer = el;
+  el.innerHTML = `
+    <div class="shopping-add-row">
+      <input class="input" id="shopAddInput" type="text" placeholder="Add item…" autocomplete="off">
+      <button class="btn btn--ghost" id="shopAddBtn" style="flex-shrink:0">Add</button>
+    </div>
+    <div class="shopping-actions">
+      <button class="btn btn--ghost" id="shopCopyBtn" style="flex:1">📋 Copy List</button>
+      <button class="btn btn--ghost" id="shopClearBtn" style="flex:1">✓ Clear Done</button>
+    </div>
+    <div id="shopList"></div>`;
+
+  const input = el.querySelector('#shopAddInput');
+  const doAdd = () => {
+    const name = input.value.trim();
+    if (!name) return;
+    const known = getItemByName(name);
+    addShoppingItem({ name, category: known?.category || null });
+    input.value = '';
+    renderShoppingList();
+  };
+  el.querySelector('#shopAddBtn').addEventListener('click', doAdd);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') doAdd(); });
+  el.querySelector('#shopCopyBtn').addEventListener('click', handleShopCopy);
+  el.querySelector('#shopClearBtn').addEventListener('click', () => { clearCompletedShopping(); renderShoppingList(); });
+
+  const list = el.querySelector('#shopList');
+  list.addEventListener('change', e => {
+    const cb = e.target.closest('.shopping-checkbox');
+    if (cb) { toggleShoppingItem(cb.dataset.id); renderShoppingList(); }
+  });
+  list.addEventListener('click', e => {
+    const del = e.target.closest('.shopping-item__delete');
+    if (del) { removeShoppingItem(del.dataset.id); renderShoppingList(); }
+  });
+  list.addEventListener('blur', e => {
+    const note = e.target.closest('.shopping-item__note');
+    if (note) updateShoppingItem(note.dataset.id, { note: note.value });
+  }, true);
+  renderShoppingList();
+}
+
+function refreshShopping() { renderShoppingList(); }
+
+function renderShoppingList() {
+  const list = _shopContainer?.querySelector('#shopList');
+  if (!list) return;
+  const items = getShoppingList();
+  if (!items.length) {
+    list.innerHTML = `<div class="empty-state"><div class="empty-state__icon">🛒</div><div class="empty-state__title">Your list is empty</div><div class="empty-state__subtitle">Add items to buy at the store</div></div>`;
+    return;
+  }
+  const uncompleted = items.filter(i => !i.completed);
+  const completed   = items.filter(i => i.completed);
+  const grouped     = groupBy(uncompleted, i => i.category || 'Other');
+  let html = '';
+  CATEGORIES.forEach(cat => {
+    const catItems = grouped[cat];
+    if (!catItems || !catItems.length) return;
+    html += `<div class="section-header">${CATEGORY_ICONS[cat]} ${cat}</div><div class="settings-item" style="margin-bottom:8px">`;
+    catItems.forEach(item => { html += renderShopItem(item); });
+    html += `</div>`;
+  });
+  // Items with no category
+  const noCat = uncompleted.filter(i => !i.category || !CATEGORIES.includes(i.category));
+  if (noCat.length) {
+    html += `<div class="section-header">📦 Other</div><div class="settings-item" style="margin-bottom:8px">`;
+    noCat.forEach(item => { html += renderShopItem(item); });
+    html += `</div>`;
+  }
+  if (completed.length) {
+    html += `<div class="section-header" style="margin-top:16px">✓ Done</div><div class="settings-item" style="margin-bottom:8px">`;
+    completed.forEach(item => { html += renderShopItem(item); });
+    html += `</div>`;
+  }
+  list.innerHTML = html;
+}
+
+function renderShopItem(item) {
+  return `<div class="shopping-item ${item.completed?'is-completed':''}" data-id="${item.id}">
+    <input type="checkbox" class="shopping-checkbox" data-id="${item.id}" ${item.completed?'checked':''}>
+    <div style="flex:1;min-width:0">
+      <div class="shopping-item__name">${escHtml(item.name)}</div>
+      <input type="text" class="shopping-item__note" data-id="${item.id}" value="${escHtml(item.note||'')}" placeholder="Add note…">
+    </div>
+    <button class="shopping-item__delete" data-id="${item.id}">✕</button>
+  </div>`;
+}
+
+function handleShopCopy() {
+  const items = getShoppingList().filter(i => !i.completed);
+  if (!items.length) { showToast('Nothing on the list yet!'); return; }
+  const grouped = groupBy(items, i => i.category || 'Other');
+  let text = 'FrostTrack Shopping List\n';
+  CATEGORIES.forEach(cat => {
+    const catItems = grouped[cat];
+    if (!catItems || !catItems.length) return;
+    text += `\n${cat.toUpperCase()}\n`;
+    catItems.forEach(i => { text += `- ${i.name}${i.note ? ` (${i.note})` : ''}\n`; });
+  });
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard!')).catch(() => fallbackCopy(text));
+  } else { fallbackCopy(text); }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  try { document.execCommand('copy'); showToast('Copied!'); } catch { showToast('Could not copy'); }
+  ta.remove();
+}
+
+// ── tabs/meals.js ─────────────────────────────
+
+let _mealsContainer  = null;
+let _mealsMode       = 'heat';
+let _mealsOffset     = 0;
+
+function mountMeals(el) {
+  _mealsContainer = el;
+  el.innerHTML = `
+    <div class="segmented-control">
+      <button class="segmented-btn is-active" data-mode="heat">🔥 Just heat it up</button>
+      <button class="segmented-btn" data-mode="cook">🍳 I'm cooking</button>
+    </div>
+    <div id="mealsContent"></div>`;
+  el.querySelector('.segmented-control').addEventListener('click', e => {
+    const btn = e.target.closest('[data-mode]');
+    if (btn) setMealsMode(btn.dataset.mode);
+  });
+  renderMealsContent();
+}
+
+function refreshMeals() { _mealsOffset = 0; updateMealsSegmented(); renderMealsContent(); }
+
+function setMealsMode(mode) {
+  _mealsMode = mode; _mealsOffset = 0;
+  updateMealsSegmented(); renderMealsContent();
+}
+
+function updateMealsSegmented() {
+  _mealsContainer?.querySelectorAll('.segmented-btn').forEach(b => b.classList.toggle('is-active', b.dataset.mode === _mealsMode));
+}
+
+function renderMealsContent() {
+  const content = _mealsContainer?.querySelector('#mealsContent');
+  if (!content) return;
+  _mealsMode === 'heat' ? renderMealsHeat(content) : renderMealsCook(content);
+}
+
+function renderMealsHeat(content) {
+  const meals = getInventory().filter(i => i.category === 'Full Meals').sort((a,b)=>a.useByDate.localeCompare(b.useByDate));
+  if (!meals.length) {
+    content.innerHTML = `<div class="empty-state"><div class="empty-state__icon">🍱</div><div class="empty-state__title">No freezer meals right now</div><div class="empty-state__subtitle">Add some Full Meals to see them here</div></div>`;
+    return;
+  }
+  const rotated = [...meals.slice(_mealsOffset), ...meals.slice(0, _mealsOffset)];
+  const shown   = rotated.slice(0, 3);
+  let html = `<div class="section-header">🍱 Ready to Heat</div>`;
+  shown.forEach((item, i) => {
+    const days = daysUntil(item.useByDate);
+    html += `<div class="meal-card animate-slide-up" style="--i:${i}">
+      <div class="meal-card__name">${escHtml(item.name)}</div>
+      <div class="meal-card__meta"><span style="font-size:13px;color:var(--color-text-secondary)">${item.quantity} ${escHtml(item.unit)}</span><span class="days-chip ${getExpiryClass(days)}">${getDaysLabel(days)}</span></div>
+      <div class="meal-card__footer"><span></span><button class="btn btn--ghost" style="font-size:13px;padding:8px 14px" data-action="mark-used" data-id="${item.id}">Mark as used</button></div>
+    </div>`;
+  });
+  if (meals.length > 3) html += `<div class="shuffle-wrap"><button class="btn btn--ghost" id="shuffleBtn">🔀 Shuffle</button></div>`;
+  content.innerHTML = html;
+  content.querySelector('#shuffleBtn')?.addEventListener('click', () => { _mealsOffset = (_mealsOffset + 3) % meals.length; renderMealsContent(); });
+  content.querySelectorAll('[data-action="mark-used"]').forEach(btn => btn.addEventListener('click', () => mealsMarkUsed(btn.dataset.id)));
+}
+
+function renderMealsCook(content) {
+  const inv      = getInventory();
+  const proteins = inv.filter(i => i.category === 'Protein').sort((a,b)=>a.useByDate.localeCompare(b.useByDate));
+  const produce  = inv.filter(i => i.category === 'Produce').sort((a,b)=>a.useByDate.localeCompare(b.useByDate));
+  const other    = inv.filter(i => i.category === 'Other').sort((a,b)=>a.useByDate.localeCompare(b.useByDate));
+  if (!proteins.length && !produce.length) {
+    content.innerHTML = `<div class="empty-state"><div class="empty-state__icon">🛒</div><div class="empty-state__title">Nothing to cook with</div><div class="empty-state__subtitle">Add some Protein and Produce to your freezer</div></div>`;
+    return;
+  }
+  const protein = proteins[_mealsOffset % Math.max(proteins.length, 1)] || null;
+  const veg     = produce[_mealsOffset  % Math.max(produce.length, 1)]  || null;
+  const extra   = other[_mealsOffset   % Math.max(other.length, 1)]    || null;
+  let html = `<div class="section-header">🍳 Tonight's Combo</div><div class="combo-card"><div class="combo-card__header">Suggested ingredients</div>`;
+  html += protein ? renderComboItem(protein, '🥩') : `<div class="combo-item"><div class="combo-item__info"><div class="combo-item__name" style="color:var(--color-text-secondary)">No Protein in freezer</div></div></div>`;
+  html += veg     ? renderComboItem(veg, '🥦')     : `<div class="combo-item"><div class="combo-item__info"><div class="combo-item__name" style="color:var(--color-text-secondary)">No Produce in freezer</div></div></div>`;
+  if (extra) html += renderComboItem(extra, '📦');
+  html += `</div>`;
+  if (protein && veg) {
+    const q = encodeURIComponent(`${protein.name} ${veg.name} recipe`);
+    html += `<div style="margin-top:8px;text-align:center"><a class="recipe-link" href="https://www.google.com/search?q=${q}" target="_blank" rel="noopener">🔍 Search recipes →</a></div>`;
+  }
+  if (proteins.length > 1 || produce.length > 1 || other.length > 1)
+    html += `<div class="shuffle-wrap"><button class="btn btn--ghost" id="shuffleBtn">🔀 Different combo</button></div>`;
+  content.innerHTML = html;
+  content.querySelector('#shuffleBtn')?.addEventListener('click', () => { _mealsOffset++; renderMealsContent(); });
+  content.querySelectorAll('[data-action="mark-used"]').forEach(btn => btn.addEventListener('click', () => mealsMarkUsed(btn.dataset.id)));
+}
+
+function renderComboItem(item, icon) {
+  const days = daysUntil(item.useByDate);
+  return `<div class="combo-item">
+    <div class="combo-item__info"><div class="combo-item__name">${icon} ${escHtml(item.name)}</div><div class="combo-item__sub">${item.quantity} ${escHtml(item.unit)}</div></div>
+    <span class="days-chip ${getExpiryClass(days)}" style="font-size:12px">${getDaysLabel(days)}</span>
+    <button class="btn btn--ghost" style="font-size:12px;padding:6px 10px;margin-left:8px" data-action="mark-used" data-id="${item.id}">Used</button>
+  </div>`;
+}
+
+function mealsMarkUsed(id) {
+  const item = getInventory().find(i => i.id === id);
+  if (!item) return;
+  const { name, category } = item;
+  removeInventoryItem(id);
+  renderMealsContent();
+  showToast(`Marked ${name} as used. Add to shopping list?`, { actionLabel: 'Add', action: () => {
+    const known = getItemByName(name);
+    addShoppingItem({ name, category: known?.category || category });
+    refreshShopping();
+  }});
+}
+
+// ── settings.js ───────────────────────────────
+
+function initSettings(onClose) {
+  const overlay = document.getElementById('settingsOverlay');
+  const settings = getSettings();
+  const catDefs  = settings.categoryDefaults || CATEGORY_DEFAULTS_MONTHS;
+  const items    = getItemList();
+
+  overlay.innerHTML = `
+    <div class="settings-header">
+      <h1>Settings</h1>
+      <button class="btn btn--icon" id="settingsClose">✕</button>
+    </div>
+    <div class="settings-body">
+      <div class="settings-section">
+        <h2>Anthropic API Key</h2>
+        <div class="settings-item">
+          <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:8px">
+            <div class="api-key-wrap" style="width:100%">
+              <input class="input" id="apiKeyInput" type="password" value="${escHtml(settings.anthropicApiKey||'')}" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
+              <button class="api-key-toggle" id="apiKeyToggle" type="button">Show</button>
+            </div>
+            <p style="font-size:12px;color:var(--color-text-secondary)">Used only for auto-categorizing items. Optional — you can always set categories manually.</p>
+          </div>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h2>Default Use-By Duration</h2>
+        <div class="settings-item">
+          ${CATEGORIES.map(cat => `<div class="settings-row"><div><div class="settings-row__label">${cat}</div><div class="settings-row__sub">months until use-by</div></div><div class="settings-row__right"><input class="input" type="number" min="1" max="24" data-cat="${cat}" value="${catDefs[cat]||CATEGORY_DEFAULTS_MONTHS[cat]}" style="width:64px;text-align:center;padding:6px 8px"></div></div>`).join('')}
+        </div>
+      </div>
+      <div class="settings-section">
+        <h2>Item List (${items.length} items)</h2>
+        <div class="settings-item" style="max-height:300px;overflow-y:auto" id="settingsItemList">
+          ${items.map(i => `<div class="item-list-item"><span class="item-list-item__name">${escHtml(i.name)}</span><span class="item-list-item__badge">${i.category||''}</span><button class="btn btn--icon" data-remove-item="${escHtml(i.name)}" style="color:var(--color-text-secondary)">✕</button></div>`).join('')}
+        </div>
+      </div>
+      <div class="settings-section">
+        <h2>Data</h2>
+        <div class="settings-item"><div class="settings-row"><div><div class="settings-row__label">Clear all data</div><div class="settings-row__sub">Removes all inventory, shopping, and custom items</div></div><button class="btn btn--danger" id="clearDataBtn">Clear</button></div></div>
+      </div>
+    </div>`;
+
+  overlay.classList.add('is-open');
+
+  overlay.querySelector('#settingsClose').addEventListener('click', () => { overlay.classList.remove('is-open'); if (onClose) onClose(); });
+
+  const apiInput  = overlay.querySelector('#apiKeyInput');
+  const apiToggle = overlay.querySelector('#apiKeyToggle');
+  apiToggle.addEventListener('click', () => { const isPass = apiInput.type==='password'; apiInput.type=isPass?'text':'password'; apiToggle.textContent=isPass?'Hide':'Show'; });
+  apiInput.addEventListener('blur', () => saveSettings({ anthropicApiKey: apiInput.value.trim() }));
+
+  overlay.querySelectorAll('input[data-cat]').forEach(input => {
+    input.addEventListener('change', () => {
+      const val = parseInt(input.value, 10);
+      if (val >= 1 && val <= 24) saveSettings({ categoryDefaults: { [input.dataset.cat]: val } });
+    });
+  });
+
+  overlay.querySelector('#settingsItemList').addEventListener('click', e => {
+    const btn = e.target.closest('[data-remove-item]');
+    if (!btn) return;
+    removeFromItemList(btn.dataset.removeItem);
+    btn.closest('.item-list-item').remove();
+  });
+
+  overlay.querySelector('#clearDataBtn').addEventListener('click', () => {
+    if (!confirm('Delete ALL inventory, shopping list, and custom items? This cannot be undone.')) return;
+    clearAllData(); initStore(); overlay.classList.remove('is-open');
+    _mounted.clear(); switchTab('home');
+  });
+}
+
+// ── app.js (router) ───────────────────────────
+
+const TAB_CONFIG = {
+  home:      { title: 'FrostTrack', mount: mountHome,      refresh: refreshHome },
+  inventory: { title: 'Inventory',  mount: mountInventory, refresh: refreshInventory },
+  add:       { title: 'Add Item',   mount: mountAdd,       refresh: refreshAdd },
+  shopping:  { title: 'Shopping',   mount: mountShopping,  refresh: refreshShopping },
+  meals:     { title: 'Meals',      mount: mountMeals,     refresh: refreshMeals },
+};
+
+const _mounted = new Set();
+let _activeTab = null;
+
+function switchTab(tabId, mealsMode) {
+  if (tabId === _activeTab && !mealsMode) return;
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('is-active'));
+  document.querySelector(`#tab-${tabId}`)?.classList.add('is-active');
+  document.querySelectorAll('.bottom-nav__item').forEach(b => b.classList.toggle('is-active', b.dataset.tab === tabId));
+  const config    = TAB_CONFIG[tabId];
+  const container = document.querySelector(`#tab-${tabId}`);
+  if (!config || !container) return;
+  if (!_mounted.has(tabId)) { config.mount(container); _mounted.add(tabId); }
+  else { config.refresh(); }
+  if (tabId === 'meals' && mealsMode) setMealsMode(mealsMode);
+  document.querySelector('.app-header__title').textContent = config.title;
+  _activeTab = tabId;
+  document.querySelector('.tab-content')?.scrollTo(0, 0);
+}
+
+window.switchToTab = switchTab;
+
+document.querySelector('.bottom-nav').addEventListener('click', e => {
+  const btn = e.target.closest('[data-tab]');
+  if (btn) switchTab(btn.dataset.tab);
+});
+
+document.querySelector('.gear-btn').addEventListener('click', () => {
+  initSettings(() => { if (_activeTab) TAB_CONFIG[_activeTab]?.refresh(); });
+});
+
+// ── Boot ──────────────────────────────────────
+initStore();
+switchTab('home');
