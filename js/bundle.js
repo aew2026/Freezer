@@ -1381,7 +1381,7 @@ const BUILT_IN_FIREBASE_CONFIG = {
     ? settings.firebaseConfig
     : BUILT_IN_FIREBASE_CONFIG;
   // Save built-in config so settings UI shows it as connected
-  if (!settings.firebaseConfig) saveSettings({ firebaseConfig: config });
+  if (!settings.firebaseConfig || !settings.firebaseConfig.apiKey) saveSettings({ firebaseConfig: config });
   function tryInit() {
     if (window.firebase) { fbInit(config); }
     else { setTimeout(tryInit, 200); }
