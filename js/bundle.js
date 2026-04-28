@@ -1164,14 +1164,16 @@ function initSettings(onClose) {
     const raw = overlay.querySelector('#fbConfigInput')?.value.trim();
     if (!raw) return;
     try {
-      // Accept either a plain JSON object or the Firebase SDK snippet
-      const jsonStr = raw.replace(/^[\s\S]*?(\{[\s\S]*\})[\s\S]*$/, '$1');
-      const config = JSON.parse(jsonStr);
+      // Extract the { } object block, then normalize JS object syntax to JSON
+      const objStr = raw.replace(/^[\s\S]*?(\{[\s\S]*?\})\s*;?\s*$/, '$1')
+        .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":') // quote unquoted keys
+        .replace(/'/g, '"');  // single → double quotes
+      const config = JSON.parse(objStr);
       if (!config.apiKey || !config.projectId) { alert('Invalid config — make sure you pasted the full firebaseConfig object.'); return; }
       saveSettings({ firebaseConfig: config });
       fbInit(config);
       initSettings(onClose); // re-render settings
-    } catch(e) { alert('Could not parse config. Make sure you paste the JSON object from Firebase.'); }
+    } catch(e) { alert('Could not parse config. Try selecting just the { ... } block from the Firebase console.'); }
   });
 
   overlay.querySelector('#fbSignInBtn')?.addEventListener('click', () => { fbSignInWithGoogle(); });
