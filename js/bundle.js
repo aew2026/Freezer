@@ -1044,7 +1044,9 @@ function initSettings(onClose) {
   const settings = getSettings();
   const catDefs  = settings.categoryDefaults || CATEGORY_DEFAULTS_MONTHS;
   const items    = getItemList();
-  const fbConfig = settings.firebaseConfig || {};
+  const fbConfig = (settings.firebaseConfig && settings.firebaseConfig.apiKey)
+    ? settings.firebaseConfig
+    : (typeof BUILT_IN_FIREBASE_CONFIG !== 'undefined' ? BUILT_IN_FIREBASE_CONFIG : {});
   const hasConfig = !!(fbConfig.apiKey);
 
   // Auth status block
