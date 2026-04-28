@@ -2,6 +2,16 @@
 // FrostTrack — single-file bundle (no ES modules)
 // ─────────────────────────────────────────────
 
+// Built-in Firebase config (declared first so it's available everywhere)
+var BUILT_IN_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyD0qQ1HpgSrqooaFLe6RnRtB1D2cRkykA4",
+  authDomain: "frosttrack-cbeee.firebaseapp.com",
+  projectId: "frosttrack-cbeee",
+  storageBucket: "frosttrack-cbeee.firebasestorage.app",
+  messagingSenderId: "505797139212",
+  appId: "1:505797139212:web:53551ef2ae0c9fb7884729"
+};
+
 // ── defaults.js ──────────────────────────────
 
 const CATEGORIES = ['Protein', 'Produce', 'Full Meals', 'Desserts', 'Other'];
@@ -1239,7 +1249,9 @@ document.querySelector('.bottom-nav').addEventListener('click', e => {
 });
 
 document.querySelector('.gear-btn').addEventListener('click', () => {
-  initSettings(() => { if (_activeTab) TAB_CONFIG[_activeTab]?.refresh(); });
+  try {
+    initSettings(() => { if (_activeTab) TAB_CONFIG[_activeTab]?.refresh(); });
+  } catch(e) { alert('Settings error: ' + e.message); console.error(e); }
 });
 
 // ── Boot ──────────────────────────────────────
@@ -1366,15 +1378,6 @@ function fbUpdateAuthUI(user) {
   }
 }
 
-// Built-in Firebase config — no paste required
-const BUILT_IN_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyD0qQ1HpgSrqooaFLe6RnRtB1D2cRkykA4",
-  authDomain: "frosttrack-cbeee.firebaseapp.com",
-  projectId: "frosttrack-cbeee",
-  storageBucket: "frosttrack-cbeee.firebasestorage.app",
-  messagingSenderId: "505797139212",
-  appId: "1:505797139212:web:53551ef2ae0c9fb7884729"
-};
 
 // Auto-init Firebase: use saved config if present, otherwise use built-in
 (function() {
