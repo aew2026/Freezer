@@ -19,11 +19,12 @@ body {
 
 /* ── Header ── */
 .app-header {
-  height: var(--header-height);
+  height: calc(var(--header-height) + env(safe-area-inset-top));
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
-  padding: 0 16px;
+  padding: 0 16px calc(10px);
+  padding-top: env(safe-area-inset-top);
   background: var(--color-bg);
   border-bottom: 1px solid var(--color-border);
   position: sticky;
@@ -215,11 +216,12 @@ body {
 }
 
 .settings-header {
-  height: var(--header-height);
+  height: calc(var(--header-height) + env(safe-area-inset-top));
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
-  padding: 0 16px;
+  padding: 0 16px calc(10px);
+  padding-top: env(safe-area-inset-top);
   border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: 0;
