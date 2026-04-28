@@ -1,4 +1,4 @@
-const CACHE_NAME = 'frosttrack-v3';
+const CACHE_NAME = 'frosttrack-v4';
 
 // Files that are safe to cache aggressively (rarely change)
 const STATIC_SHELL = [
