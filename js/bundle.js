@@ -1164,16 +1164,30 @@ function initSettings(onClose) {
     const raw = overlay.querySelector('#fbConfigInput')?.value.trim();
     if (!raw) return;
     try {
-      // Extract the { } object block, then normalize JS object syntax to JSON
-      const objStr = raw.replace(/^[\s\S]*?(\{[\s\S]*?\})\s*;?\s*$/, '$1')
-        .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":') // quote unquoted keys
-        .replace(/'/g, '"');  // single → double quotes
-      const config = JSON.parse(objStr);
+      // Strip code fences, "const x = ", trailing semicolons, whitespace
+      let cleaned = raw.trim()
+        .replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '')  // strip ``` fences
+        .replace(/^[\s\S]*?const\s+\w+\s*=\s*/, '')          // strip "const x = "
+        .replace(/;?\s*$/, '').trim();                         // strip trailing ;
+
+      // Extract { } block if there's surrounding text
+      const braceMatch = cleaned.match(/\{[\s\S]*\}/);
+      if (braceMatch) cleaned = braceMatch[0];
+
+      // Strip markdown link format [text](url) → url  (Claude chat renders URLs as links)
+      cleaned = cleaned.replace(/\[([^\]]*)\]\(([^)]*)\)/g, '$2');
+
+      // Quote any unquoted JS object keys
+      cleaned = cleaned
+        .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":')
+        .replace(/'/g, '"');
+
+      const config = JSON.parse(cleaned);
       if (!config.apiKey || !config.projectId) { alert('Invalid config — make sure you pasted the full firebaseConfig object.'); return; }
       saveSettings({ firebaseConfig: config });
       fbInit(config);
-      initSettings(onClose); // re-render settings
-    } catch(e) { alert('Could not parse config. Try selecting just the { ... } block from the Firebase console.'); }
+      initSettings(onClose);
+    } catch(e) { alert('Could not parse config.\n\nTip: paste only the { } block with no surrounding text.'); }
   });
 
   overlay.querySelector('#fbSignInBtn')?.addEventListener('click', () => { fbSignInWithGoogle(); });
