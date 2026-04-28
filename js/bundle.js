@@ -190,6 +190,7 @@ function storeRead(key) {
 
 function storeWrite(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+  if (typeof _onStoreWrite === 'function') _onStoreWrite(key, value);
 }
 
 function initStore() {
@@ -1039,10 +1040,58 @@ function mealsMarkUsed(id) {
 // ── settings.js ───────────────────────────────
 
 function initSettings(onClose) {
-  const overlay = document.getElementById('settingsOverlay');
+  const overlay  = document.getElementById('settingsOverlay');
   const settings = getSettings();
   const catDefs  = settings.categoryDefaults || CATEGORY_DEFAULTS_MONTHS;
   const items    = getItemList();
+  const fbConfig = settings.firebaseConfig || {};
+  const hasConfig = !!(fbConfig.apiKey);
+
+  // Auth status block
+  let authBlock = '';
+  if (!hasConfig) {
+    authBlock = `
+      <div class="settings-section">
+        <h2>Sync (Firebase)</h2>
+        <div class="settings-item">
+          <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:10px">
+            <p style="font-size:13px;color:var(--color-text-secondary)">Paste your Firebase config below to enable real-time sync across all your devices.</p>
+            <textarea class="input" id="fbConfigInput" rows="6" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"..."}'
+              style="font-size:11px;font-family:monospace;resize:vertical">${hasConfig ? JSON.stringify(fbConfig, null, 2) : ''}</textarea>
+            <button class="btn btn--primary" id="fbSaveConfig" style="width:100%">Save &amp; Connect</button>
+          </div>
+        </div>
+      </div>`;
+  } else if (_fbUser) {
+    authBlock = `
+      <div class="settings-section">
+        <h2>Sync</h2>
+        <div class="settings-item">
+          <div class="settings-row">
+            <div>
+              <div class="settings-row__label" style="color:var(--color-green)">✓ Synced</div>
+              <div class="settings-row__sub">${escHtml(_fbUser.displayName || _fbUser.email || 'Signed in')}</div>
+            </div>
+            <button class="btn btn--ghost" id="fbSignOutBtn">Sign out</button>
+          </div>
+        </div>
+      </div>`;
+  } else {
+    authBlock = `
+      <div class="settings-section">
+        <h2>Sync</h2>
+        <div class="settings-item">
+          <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:10px">
+            <p style="font-size:13px;color:var(--color-text-secondary)">Sign in with Google to sync your freezer across all devices.</p>
+            <button class="btn btn--primary" id="fbSignInBtn" style="width:100%">
+              <svg width="18" height="18" viewBox="0 0 18 18" style="margin-right:6px"><path fill="#fff" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#fff" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2.01c-.72.48-1.63.76-2.7.76-2.07 0-3.82-1.4-4.45-3.27H1.87v2.07A8 8 0 0 0 8.98 17z"/><path fill="#fff" d="M4.53 10.54A4.8 4.8 0 0 1 4.28 9c0-.54.09-1.06.25-1.54V5.38H1.87A8 8 0 0 0 .98 9c0 1.29.31 2.51.89 3.61l2.66-2.07z"/><path fill="#fff" d="M8.98 3.58c1.16 0 2.2.4 3.02 1.19l2.26-2.26A8 8 0 0 0 1.87 5.38L4.53 7.46C5.16 5.59 6.91 3.58 8.98 3.58z"/></svg>
+              Sign in with Google
+            </button>
+            <button class="btn btn--ghost" id="fbRemoveConfig" style="width:100%;font-size:12px">Remove Firebase config</button>
+          </div>
+        </div>
+      </div>`;
+  }
 
   overlay.innerHTML = `
     <div class="settings-header">
@@ -1050,6 +1099,7 @@ function initSettings(onClose) {
       <button class="btn btn--icon" id="settingsClose">✕</button>
     </div>
     <div class="settings-body">
+      ${authBlock}
       <div class="settings-section">
         <h2>Anthropic API Key</h2>
         <div class="settings-item">
@@ -1108,6 +1158,30 @@ function initSettings(onClose) {
     clearAllData(); initStore(); overlay.classList.remove('is-open');
     _mounted.clear(); switchTab('home');
   });
+
+  // Firebase buttons
+  overlay.querySelector('#fbSaveConfig')?.addEventListener('click', () => {
+    const raw = overlay.querySelector('#fbConfigInput')?.value.trim();
+    if (!raw) return;
+    try {
+      // Accept either a plain JSON object or the Firebase SDK snippet
+      const jsonStr = raw.replace(/^[\s\S]*?(\{[\s\S]*\})[\s\S]*$/, '$1');
+      const config = JSON.parse(jsonStr);
+      if (!config.apiKey || !config.projectId) { alert('Invalid config — make sure you pasted the full firebaseConfig object.'); return; }
+      saveSettings({ firebaseConfig: config });
+      fbInit(config);
+      initSettings(onClose); // re-render settings
+    } catch(e) { alert('Could not parse config. Make sure you paste the JSON object from Firebase.'); }
+  });
+
+  overlay.querySelector('#fbSignInBtn')?.addEventListener('click', () => { fbSignInWithGoogle(); });
+  overlay.querySelector('#fbSignOutBtn')?.addEventListener('click', () => { fbSignOut(); });
+  overlay.querySelector('#fbRemoveConfig')?.addEventListener('click', () => {
+    if (!confirm('Remove Firebase config? Sync will stop but your local data stays.')) return;
+    fbStopListeners(); _db = null; _auth = null; _fbUser = null;
+    saveSettings({ firebaseConfig: {} });
+    initSettings(onClose);
+  });
 }
 
 // ── app.js (router) ───────────────────────────
@@ -1153,3 +1227,136 @@ document.querySelector('.gear-btn').addEventListener('click', () => {
 // ── Boot ──────────────────────────────────────
 initStore();
 switchTab('home');
+
+// ── Firebase Sync ─────────────────────────────
+// All Firebase logic lives here. The store's storeWrite
+// calls _onStoreWrite (set below) to mirror writes to Firestore.
+
+let _db          = null;
+let _auth        = null;
+let _fbUser      = null;
+let _fbListeners = [];   // unsubscribe functions
+let _syncing     = false; // prevent feedback loops
+
+// Called by storeWrite on every localStorage change
+function _onStoreWrite(key, value) {
+  if (!_db || !_fbUser || _syncing) return;
+  const docName = key.replace('frosttrack_', '');
+  _db.collection('users').doc(_fbUser.uid)
+    .collection('data').doc(docName)
+    .set({ value })
+    .catch(e => console.warn('Firestore write failed', e));
+}
+
+function fbInit(config) {
+  if (!window.firebase) { console.warn('Firebase SDK not loaded'); return; }
+  try {
+    // Avoid re-initialising if already done
+    if (!firebase.apps.length) {
+      firebase.initializeApp(config);
+    }
+    _db   = firebase.firestore();
+    _auth = firebase.auth();
+
+    _auth.onAuthStateChanged(user => {
+      _fbUser = user;
+      if (user) {
+        fbLoadAndListen(user.uid);
+        fbUpdateAuthUI(user);
+      } else {
+        fbStopListeners();
+        fbUpdateAuthUI(null);
+      }
+    });
+  } catch(e) { console.error('Firebase init failed', e); }
+}
+
+async function fbLoadAndListen(uid) {
+  const keys = ['inventory', 'shopping', 'items', 'settings'];
+
+  // Stop any previous listeners
+  fbStopListeners();
+
+  // First pass: load current Firestore data
+  const ref = _db.collection('users').doc(uid).collection('data');
+  const snap = await ref.get().catch(() => null);
+
+  if (snap && !snap.empty) {
+    // Firestore has data — it's the source of truth
+    _syncing = true;
+    snap.forEach(doc => {
+      const storeKey = 'frosttrack_' + doc.id;
+      if (doc.data().value !== undefined) {
+        try { localStorage.setItem(storeKey, JSON.stringify(doc.data().value)); } catch {}
+      }
+    });
+    _syncing = false;
+    refreshAllTabs();
+  } else {
+    // Firestore empty — push local data up (first sign-in)
+    keys.forEach(k => {
+      const local = localStorage.getItem('frosttrack_' + k);
+      if (local) {
+        try {
+          ref.doc(k).set({ value: JSON.parse(local) });
+        } catch {}
+      }
+    });
+  }
+
+  // Real-time listeners for live sync from other devices
+  keys.forEach(k => {
+    const unsub = ref.doc(k).onSnapshot(doc => {
+      if (!doc.exists || _syncing) return;
+      _syncing = true;
+      try { localStorage.setItem('frosttrack_' + k, JSON.stringify(doc.data().value)); } catch {}
+      _syncing = false;
+      refreshAllTabs();
+    });
+    _fbListeners.push(unsub);
+  });
+}
+
+function fbStopListeners() {
+  _fbListeners.forEach(u => u());
+  _fbListeners = [];
+}
+
+function refreshAllTabs() {
+  if (_homeContainer)    refreshHome();
+  if (_invContainer)     refreshInventory();
+  if (_shopContainer)    refreshShopping();
+  if (_mealsContainer)   refreshMeals();
+}
+
+function fbSignInWithGoogle() {
+  if (!_auth) return;
+  const provider = new firebase.auth.GoogleAuthProvider();
+  _auth.signInWithPopup(provider).catch(e => console.warn('Sign-in failed', e));
+}
+
+function fbSignOut() {
+  if (!_auth) return;
+  _auth.signOut();
+}
+
+function fbUpdateAuthUI(user) {
+  // Refresh settings panel if it's open
+  const overlay = document.getElementById('settingsOverlay');
+  if (overlay.classList.contains('is-open')) {
+    initSettings(() => { if (_activeTab) TAB_CONFIG[_activeTab]?.refresh(); });
+  }
+}
+
+// Auto-init Firebase if config is already saved
+(function() {
+  const settings = storeRead(STORE_KEYS.settings) || {};
+  if (settings.firebaseConfig && settings.firebaseConfig.apiKey) {
+    // Defer until Firebase SDK is loaded
+    function tryInit() {
+      if (window.firebase) { fbInit(settings.firebaseConfig); }
+      else { setTimeout(tryInit, 200); }
+    }
+    tryInit();
+  }
+})();
