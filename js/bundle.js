@@ -1262,11 +1262,11 @@ switchTab('home');
 // All Firebase logic lives here. The store's storeWrite
 // calls _onStoreWrite (set below) to mirror writes to Firestore.
 
-let _db          = null;
-let _auth        = null;
-let _fbUser      = null;
-let _fbListeners = [];   // unsubscribe functions
-let _syncing     = false; // prevent feedback loops
+var _db          = null;
+var _auth        = null;
+var _fbUser      = null;
+var _fbListeners = [];   // unsubscribe functions
+var _syncing     = false; // prevent feedback loops
 
 // Called by storeWrite on every localStorage change
 function _onStoreWrite(key, value) {
