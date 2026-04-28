@@ -1364,15 +1364,27 @@ function fbUpdateAuthUI(user) {
   }
 }
 
-// Auto-init Firebase if config is already saved
+// Built-in Firebase config — no paste required
+const BUILT_IN_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyD0qQ1HpgSrqooaFLe6RnRtB1D2cRkykA4",
+  authDomain: "frosttrack-cbeee.firebaseapp.com",
+  projectId: "frosttrack-cbeee",
+  storageBucket: "frosttrack-cbeee.firebasestorage.app",
+  messagingSenderId: "505797139212",
+  appId: "1:505797139212:web:53551ef2ae0c9fb7884729"
+};
+
+// Auto-init Firebase: use saved config if present, otherwise use built-in
 (function() {
   const settings = storeRead(STORE_KEYS.settings) || {};
-  if (settings.firebaseConfig && settings.firebaseConfig.apiKey) {
-    // Defer until Firebase SDK is loaded
-    function tryInit() {
-      if (window.firebase) { fbInit(settings.firebaseConfig); }
-      else { setTimeout(tryInit, 200); }
-    }
-    tryInit();
+  const config = (settings.firebaseConfig && settings.firebaseConfig.apiKey)
+    ? settings.firebaseConfig
+    : BUILT_IN_FIREBASE_CONFIG;
+  // Save built-in config so settings UI shows it as connected
+  if (!settings.firebaseConfig) saveSettings({ firebaseConfig: config });
+  function tryInit() {
+    if (window.firebase) { fbInit(config); }
+    else { setTimeout(tryInit, 200); }
   }
+  tryInit();
 })();
