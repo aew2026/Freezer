@@ -24,13 +24,25 @@ const CATEGORY_DEFAULTS_MONTHS = {
   'Other':      3,
 };
 
-const UNIT_OPTIONS = {
-  'Protein':    ['lbs', 'oz', 'pieces', 'servings'],
-  'Produce':    ['bags', 'cups', 'oz', 'lbs'],
-  'Full Meals': ['servings', 'portions', 'containers'],
-  'Desserts':   ['servings', 'pieces', 'containers'],
-  'Other':      ['servings', 'cups', 'oz', 'lbs', 'pieces'],
-};
+// Universal unit list — same options regardless of category
+const ALL_UNITS = ['lbs', 'oz', 'g', 'kg', 'pieces', 'unit', 'servings', 'portions', 'bags', 'cups', 'containers', 'trays', 'Custom…'];
+
+// Build <option> tags for a unit select; handles custom values not in the list
+function unitOptsHtml(selected) {
+  const inList = ALL_UNITS.includes(selected);
+  let opts = ALL_UNITS.map(u => `<option value="${u}" ${u === (inList ? selected : 'Custom…') ? 'selected' : ''}>${u}</option>`).join('');
+  return opts;
+}
+
+// Wire up a unit select + custom text input pair
+function wireUnitCustom(selId, inpId) {
+  const sel = document.getElementById(selId);
+  const inp = document.getElementById(inpId);
+  if (!sel || !inp) return;
+  const sync = () => { const show = sel.value === 'Custom…'; inp.style.display = show ? '' : 'none'; if (show) inp.focus(); };
+  sel.addEventListener('change', sync);
+  sync();
+}
 
 const DEFAULT_UNIT = {
   'Protein':    'lbs',
@@ -601,12 +613,58 @@ function renderInvCard(item, index) {
 function invHandleDecrement(id) {
   const item = getInventoryItem(id);
   if (!item) return;
-  if (item.quantity > 1) { updateInventoryItem(id, {quantity: item.quantity - 1}); renderInventory(); return; }
-  updateInventoryItem(id, {quantity: 0});
-  const right = _invListEl.querySelector(`.swipe-card__content[data-id="${id}"] .swipe-card__right`);
-  if (right) right.innerHTML = `
-    <button class="btn btn--ghost" style="font-size:12px;padding:6px 10px" data-action="confirm-used" data-id="${id}">Used it all</button>
-    <button class="btn btn--icon" style="font-size:18px" data-action="cancel-used" data-id="${id}">✕</button>`;
+  // Show a "Use amount" sheet so the user can use full or fractional quantities
+  const q = item.quantity;
+  const half = Math.round(q / 2 * 4) / 4;   // nearest 0.25
+  const chips = [
+    q >= 0.5 && half > 0 && half < q ? { label: `½ (${half})`, val: half } : null,
+    q >= 1                             ? { label: `1 ${item.unit}`, val: 1 } : null,
+    { label: 'All', val: q },
+  ].filter(Boolean);
+
+  showSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-header"><h2>Using from ${escHtml(item.name)}</h2><button class="btn btn--icon" data-action="cancel">✕</button></div>
+    <div class="sheet-body">
+      <p style="color:var(--color-text-secondary);font-size:13px;margin-bottom:16px">Currently: <strong>${q} ${escHtml(item.unit)}</strong></p>
+      <div class="form-row"><div class="input-group"><label class="input-label">Amount used</label>
+        <input class="input" id="useAmt" type="number" min="0.25" max="${q}" step="0.25" value="1" style="text-align:center;font-size:18px">
+      </div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        ${chips.map(c => `<button class="chip" data-use-chip="${c.val}">${c.label}</button>`).join('')}
+      </div>
+    </div>
+    <div class="sheet-footer">
+      <button class="btn btn--ghost" style="flex:1" data-action="cancel">Cancel</button>
+      <button class="btn btn--primary" style="flex:2" id="useConfirmBtn">Use it</button>
+    </div>`, {
+    onSave: () => {
+      const amt = parseFloat(document.getElementById('useAmt')?.value) || 0;
+      if (amt <= 0) { hideSheet(); return; }
+      const remaining = Math.max(0, Math.round((q - amt) * 100) / 100);
+      if (remaining <= 0) {
+        hideSheet();
+        invHandleUsedItAll(id);
+      } else {
+        updateInventoryItem(id, { quantity: remaining });
+        hideSheet();
+        renderInventory();
+      }
+    },
+  });
+  setTimeout(() => {
+    // Quick-select chips
+    document.querySelectorAll('[data-use-chip]').forEach(btn => {
+      btn.addEventListener('click', () => { document.getElementById('useAmt').value = btn.dataset.useChip; });
+    });
+    // Wire save button
+    document.getElementById('useConfirmBtn')?.addEventListener('click', () => {
+      const amt = parseFloat(document.getElementById('useAmt')?.value) || 0;
+      const remaining = Math.max(0, Math.round((q - amt) * 100) / 100);
+      hideSheet();
+      if (remaining <= 0) { invHandleUsedItAll(id); } else { updateInventoryItem(id, { quantity: remaining }); renderInventory(); }
+    });
+  }, 50);
 }
 
 function invHandleUsedItAll(id) {
@@ -626,7 +684,7 @@ function openEditSheet(id) {
   const item = getInventoryItem(id);
   if (!item) return;
   const catOpts  = CATEGORIES.map(c => `<option value="${c}" ${c===item.category?'selected':''}>${c}</option>`).join('');
-  const unitOpts = (UNIT_OPTIONS[item.category]||UNIT_OPTIONS['Other']).map(u => `<option value="${u}" ${u===item.unit?'selected':''}>${u}</option>`).join('');
+  const isCustomUnit = !ALL_UNITS.slice(0,-1).includes(item.unit);
   showSheet(`
     <div class="sheet-handle"></div>
     <div class="sheet-header"><h2>Edit Item</h2><button class="btn btn--icon" data-action="cancel">✕</button></div>
@@ -635,8 +693,11 @@ function openEditSheet(id) {
       <div class="form-row"><div class="input-group"><label class="input-label">Name</label><input class="input" id="editName" type="text" value="${escHtml(item.name)}" autocomplete="off"></div></div>
       <div class="form-row"><div class="input-group"><label class="input-label">Category</label><select class="input" id="editCategory">${catOpts}</select></div></div>
       <div class="form-row form-row--inline">
-        <div class="input-group"><label class="input-label">Quantity</label><input class="input" id="editQty" type="number" min="0" step="0.5" value="${item.quantity}"></div>
-        <div class="input-group"><label class="input-label">Unit</label><select class="input" id="editUnit">${unitOpts}</select></div>
+        <div class="input-group"><label class="input-label">Quantity</label><input class="input" id="editQty" type="number" min="0" step="0.25" value="${item.quantity}"></div>
+        <div class="input-group"><label class="input-label">Unit</label>
+          <select class="input" id="editUnit">${unitOptsHtml(item.unit)}</select>
+          <input class="input" id="editUnitCustom" type="text" placeholder="e.g. tray, bunch" value="${isCustomUnit ? escHtml(item.unit) : ''}" style="margin-top:6px;display:${isCustomUnit ? '' : 'none'}">
+        </div>
       </div>
       <div class="form-row"><div class="input-group"><label class="input-label">Date Frozen</label><input class="input" id="editDateFrozen" type="date" value="${item.dateFrozen||''}"></div></div>
       <div class="form-row"><div class="input-group"><label class="input-label">Use By</label><input class="input" id="editUseBy" type="date" value="${item.useByDate||''}"></div></div>
@@ -651,7 +712,7 @@ function openEditSheet(id) {
         name:       el.querySelector('#editName').value.trim(),
         category:   el.querySelector('#editCategory').value,
         quantity:   parseFloat(el.querySelector('#editQty').value) || 1,
-        unit:       el.querySelector('#editUnit').value,
+        unit:       el.querySelector('#editUnit').value === 'Custom…' ? (el.querySelector('#editUnitCustom').value.trim() || 'unit') : el.querySelector('#editUnit').value,
         dateFrozen: el.querySelector('#editDateFrozen').value,
         useByDate:  el.querySelector('#editUseBy').value,
       };
@@ -662,15 +723,7 @@ function openEditSheet(id) {
     },
   });
   setTimeout(() => {
-    const catSel = document.getElementById('editCategory');
-    const unitSel = document.getElementById('editUnit');
-    if (catSel && unitSel) {
-      catSel.addEventListener('change', () => {
-        const units = UNIT_OPTIONS[catSel.value] || UNIT_OPTIONS['Other'];
-        unitSel.innerHTML = units.map(u => `<option value="${u}">${u}</option>`).join('');
-        unitSel.value = DEFAULT_UNIT[catSel.value] || units[0];
-      });
-    }
+    wireUnitCustom('editUnit', 'editUnitCustom');
   }, 50);
 }
 
@@ -701,7 +754,10 @@ function mountAdd(el) {
           <span class="stepper__val" id="addQtyVal">1</span>
           <button type="button" class="stepper__btn" id="addQtyPlus">+</button>
         </div>
-        <select class="input" id="addUnit" style="width:120px;flex-shrink:0"></select>
+        <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;width:120px">
+          <select class="input" id="addUnit"></select>
+          <input class="input" id="addUnitCustom" type="text" placeholder="e.g. tray, bunch" style="display:none">
+        </div>
       </div></div>
     <div class="form-row form-row--inline">
       <div class="input-group"><label class="input-label">Date Frozen</label><input class="input" id="addDateFrozen" type="date"></div>
@@ -773,10 +829,10 @@ function addPopulateAutocomplete(val) {
 function addSelectCategory(cat) {
   _addCategory = cat;
   _addContainer.querySelectorAll('#catChips .chip').forEach(c => c.classList.toggle('is-selected', c.dataset.cat === cat));
-  const units = UNIT_OPTIONS[cat] || UNIT_OPTIONS['Other'];
   const unitSel = _addContainer.querySelector('#addUnit');
-  unitSel.innerHTML = units.map(u => `<option value="${u}">${u}</option>`).join('');
-  unitSel.value = DEFAULT_UNIT[cat] || units[0];
+  unitSel.innerHTML = ALL_UNITS.map(u => `<option value="${u}">${u}</option>`).join('');
+  unitSel.value = DEFAULT_UNIT[cat] || 'servings';
+  wireUnitCustom('addUnit', 'addUnitCustom');
   const settings = getSettings();
   const months = (settings.categoryDefaults && settings.categoryDefaults[cat]) || CATEGORY_DEFAULTS_MONTHS[cat] || 3;
   _addContainer.querySelector('#addUseBy').value = addMonths(today(), months);
@@ -791,7 +847,8 @@ function handleAddSave() {
     chips.style.outline='2px solid var(--color-red)'; chips.style.borderRadius='8px';
     setTimeout(()=>{ chips.style.outline=''; },1500); return;
   }
-  const unit       = _addContainer.querySelector('#addUnit')?.value || DEFAULT_UNIT[_addCategory] || 'servings';
+  const rawUnit    = _addContainer.querySelector('#addUnit')?.value || 'servings';
+  const unit       = rawUnit === 'Custom…' ? (_addContainer.querySelector('#addUnitCustom')?.value.trim() || 'unit') : rawUnit;
   const dateFrozen = _addContainer.querySelector('#addDateFrozen').value || today();
   const useByDate  = _addContainer.querySelector('#addUseBy').value || addMonths(dateFrozen, CATEGORY_DEFAULTS_MONTHS[_addCategory]||3);
   addInventoryItem({ name, category: _addCategory, quantity: _addQuantity, unit, dateFrozen, useByDate });
@@ -814,6 +871,8 @@ function addResetForm() {
   _addCategory = null;
   _addContainer.querySelectorAll('#catChips .chip').forEach(c => c.classList.remove('is-selected'));
   _addContainer.querySelector('#addUnit').innerHTML = '';
+  const customInp = _addContainer.querySelector('#addUnitCustom');
+  if (customInp) { customInp.value = ''; customInp.style.display = 'none'; }
   _addContainer.querySelector('#addUseBy').value = '';
   _addContainer.querySelector('#addName').focus();
 }
