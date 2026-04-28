@@ -1,35 +1,27 @@
-const CACHE_NAME = 'frosttrack-v1';
+const CACHE_NAME = 'frosttrack-v3';
 
-const APP_SHELL = [
-  '/',
-  '/index.html',
+// Files that are safe to cache aggressively (rarely change)
+const STATIC_SHELL = [
   '/manifest.json',
   '/css/reset.css',
   '/css/variables.css',
   '/css/layout.css',
   '/css/components.css',
   '/css/animations.css',
-  '/js/app.js',
-  '/js/store.js',
-  '/js/utils.js',
-  '/js/defaults.js',
-  '/js/claude.js',
-  '/js/settings.js',
-  '/js/tabs/home.js',
-  '/js/tabs/inventory.js',
-  '/js/tabs/add.js',
-  '/js/tabs/shopping.js',
-  '/js/tabs/meals.js',
-  '/js/components/bottomSheet.js',
-  '/js/components/toast.js',
-  '/js/components/swipeReveal.js',
+];
+
+// Files that should ALWAYS be fetched fresh from network (app logic that updates frequently)
+const NETWORK_FIRST = [
+  '/index.html',
+  '/',
+  '/js/bundle.js',
+  '/sw.js',
 ];
 
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
-      // Add each file individually so one failure doesn't abort the whole install
-      return Promise.allSettled(APP_SHELL.map(url => cache.add(url)));
+      return Promise.allSettled(STATIC_SHELL.map(url => cache.add(url)));
     }).then(() => self.skipWaiting())
   );
 });
@@ -43,16 +35,36 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  // Never intercept Anthropic API calls
+  // Never intercept Anthropic or Firebase API calls
   if (event.request.url.includes('anthropic.com')) return;
+  if (event.request.url.includes('firestore.googleapis.com')) return;
+  if (event.request.url.includes('firebase')) return;
   // Never intercept non-GET requests
   if (event.request.method !== 'GET') return;
 
+  const url = new URL(event.request.url);
+  const path = url.pathname;
+
+  // Network-first for HTML and JS bundle — always get the latest code
+  const isNetworkFirst = NETWORK_FIRST.some(p => path === p || path.endsWith('/bundle.js'));
+  if (isNetworkFirst) {
+    event.respondWith(
+      fetch(event.request).then(response => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        }
+        return response;
+      }).catch(() => caches.match(event.request)) // fall back to cache if offline
+    );
+    return;
+  }
+
+  // Cache-first for everything else (CSS, fonts, icons)
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
       return fetch(event.request).then(response => {
-        // Cache successful responses from same origin and Google Fonts
         if (
           response.ok &&
           (event.request.url.startsWith(self.location.origin) ||
