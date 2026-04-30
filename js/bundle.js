@@ -196,6 +196,7 @@ const STORE_KEYS = {
   shopping:  'frosttrack_shopping',
   items:     'frosttrack_items',
   settings:  'frosttrack_settings',
+  use_log:   'frosttrack_use_log',
 };
 
 const DEFAULT_SETTINGS = {
@@ -238,6 +239,7 @@ function getInventory() {
 function addInventoryItem(partial) {
   const items = storeRead(STORE_KEYS.inventory) || [];
   const item = { id: generateId(), name: '', category: 'Other', quantity: 1, unit: 'servings',
+    staple: false, minQty: null, intendedFor: '',
     dateFrozen: today(), useByDate: '', addedAt: new Date().toISOString(), ...partial };
   items.push(item);
   storeWrite(STORE_KEYS.inventory, items);
@@ -334,6 +336,13 @@ function saveSettings(changes) {
 }
 
 function clearAllData() { Object.values(STORE_KEYS).forEach(k => localStorage.removeItem(k)); }
+
+function getUseLog() { return storeRead(STORE_KEYS.use_log) || []; }
+function appendUseLog(entry) {
+  const log = getUseLog();
+  log.unshift({ ...entry, usedAt: new Date().toISOString() });
+  storeWrite(STORE_KEYS.use_log, log.slice(0, 100));
+}
 
 // ── claude.js ─────────────────────────────────
 
@@ -487,13 +496,8 @@ function mountHome(el) {
   _homeContainer = el;
   el.innerHTML = `
     <div id="summaryStrip" class="summary-strip"></div>
-    <div id="expiringSection"></div>
-    <div class="quick-actions">
-      <button class="btn" id="btnHeatUp"><span class="quick-action__icon">🔥</span>Just heat it up</button>
-      <button class="btn" id="btnCooking"><span class="quick-action__icon">🍳</span>I'm cooking</button>
-    </div>`;
-  el.querySelector('#btnHeatUp').addEventListener('click', () => switchTab('meals', 'heat'));
-  el.querySelector('#btnCooking').addEventListener('click', () => switchTab('meals', 'cook'));
+    <div id="staplesSection"></div>
+    <div id="expiringSection"></div>`;
   refreshHome();
 }
 
@@ -502,15 +506,44 @@ function refreshHome() {
   const inventory = getInventory();
   const shopping  = getShoppingList();
   const urgent    = inventory.filter(i => daysUntil(i.useByDate) <= 7).length;
+  const staples   = inventory.filter(i => i.staple);
+
   _homeContainer.querySelector('#summaryStrip').innerHTML = `
     <div class="summary-pill"><div class="summary-pill__val">${inventory.length}</div><div class="summary-pill__label">In Freezer</div></div>
     <div class="summary-pill"><div class="summary-pill__val ${urgent > 0 ? 'has-alert' : ''}">${urgent}</div><div class="summary-pill__label">Expiring Soon</div></div>
     <div class="summary-pill"><div class="summary-pill__val">${shopping.filter(i=>!i.completed).length}</div><div class="summary-pill__label">To Buy</div></div>`;
 
+  // Staples section
+  const staplesSection = _homeContainer.querySelector('#staplesSection');
+  if (staples.length > 0) {
+    let shtml = `<div class="section-header">⭐ Staples</div>`;
+    staples.sort((a,b) => a.name.localeCompare(b.name)).forEach((item, i) => {
+      const isLow = item.minQty != null && item.quantity < item.minQty;
+      shtml += `<div class="staple-row animate-slide-up" style="--i:${i}">
+        <div class="staple-row__info">
+          <div class="staple-row__name">${escHtml(item.name)}${isLow ? ' <span class="low-badge">Low</span>' : ''}</div>
+          <div class="staple-row__qty">${item.quantity} ${escHtml(item.unit)}${item.minQty ? ` · min ${item.minQty}` : ''}</div>
+        </div>
+        <button class="btn btn--ghost staple-shop-btn" data-id="${item.id}" style="font-size:12px;padding:6px 12px;flex-shrink:0">+ List</button>
+      </div>`;
+    });
+    staplesSection.innerHTML = shtml;
+    staplesSection.querySelectorAll('.staple-shop-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item = getInventoryItem(btn.dataset.id);
+        if (!item) return;
+        showAddToShoppingSheet(item);
+      });
+    });
+  } else {
+    staplesSection.innerHTML = '';
+  }
+
+  // Expiring soon section
   const expiring = inventory.filter(i => daysUntil(i.useByDate) <= 30).sort((a,b) => a.useByDate.localeCompare(b.useByDate));
   const section  = _homeContainer.querySelector('#expiringSection');
   if (expiring.length === 0) {
-    section.innerHTML = `<div class="empty-state" style="padding:32px 0 16px"><div class="empty-state__icon">✅</div><div class="empty-state__title">Your freezer looks good!</div><div class="empty-state__subtitle">Nothing expiring in the next 30 days.</div></div>`;
+    section.innerHTML = staples.length === 0 ? `<div class="empty-state" style="padding:32px 0 16px"><div class="empty-state__icon">✅</div><div class="empty-state__title">Your freezer looks good!</div><div class="empty-state__subtitle">Nothing expiring in the next 30 days.</div></div>` : '';
     return;
   }
   let html = `<div class="section-header">⏰ Expiring Soon</div>`;
@@ -525,6 +558,35 @@ function refreshHome() {
     </div>`;
   });
   section.innerHTML = html;
+}
+
+function showAddToShoppingSheet(item) {
+  showSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-header"><h2>Add to Shopping List</h2><button class="btn btn--icon" data-action="cancel">✕</button></div>
+    <div class="sheet-body">
+      <p style="color:var(--color-text-secondary);font-size:13px;margin-bottom:16px">Edit name if needed (e.g. change "pasta sauce" to "canned tomatoes")</p>
+      <div class="form-row"><div class="input-group"><label class="input-label">Item</label>
+        <input class="input" id="shopNameInput" type="text" value="${escHtml(item.name)}" autocomplete="off">
+      </div></div>
+    </div>
+    <div class="sheet-footer">
+      <button class="btn btn--ghost" style="flex:1" data-action="cancel">Cancel</button>
+      <button class="btn btn--primary" style="flex:2" id="shopAddConfirm">Add to List</button>
+    </div>`, {
+    onSave: () => {
+      const name = document.getElementById('shopNameInput')?.value.trim();
+      if (name) { addShoppingItem({ name, category: item.category }); refreshShopping(); showToast('Added to shopping list'); }
+      hideSheet();
+    },
+  });
+  setTimeout(() => {
+    document.getElementById('shopAddConfirm')?.addEventListener('click', () => {
+      const name = document.getElementById('shopNameInput')?.value.trim();
+      if (name) { addShoppingItem({ name, category: item.category }); refreshShopping(); showToast('Added to shopping list'); }
+      hideSheet();
+    });
+  }, 50);
 }
 
 // ── tabs/inventory.js ─────────────────────────
@@ -544,10 +606,12 @@ function mountInventory(el) {
   _invListEl = el.querySelector('#inventoryList');
   el.querySelector('#inventorySearch').addEventListener('input', e => { _invSearch = e.target.value.trim().toLowerCase(); renderInventory(); });
   _invListEl.addEventListener('click', e => {
+    const star    = e.target.closest('.star-btn');
     const minus   = e.target.closest('.minus-btn');
     const confirm = e.target.closest('[data-action="confirm-used"]');
     const cancel  = e.target.closest('[data-action="cancel-used"]');
     const card    = e.target.closest('.swipe-card__content');
+    if (star)    { e.stopPropagation(); const item = getInventoryItem(star.dataset.id); if (item) { updateInventoryItem(item.id, {staple: !item.staple}); renderInventory(); refreshHome(); } return; }
     if (minus)   { e.stopPropagation(); invHandleDecrement(minus.dataset.id); return; }
     if (confirm) { e.stopPropagation(); invHandleUsedItAll(confirm.dataset.id); return; }
     if (cancel)  { e.stopPropagation(); const item = getInventoryItem(cancel.dataset.id); if (item) updateInventoryItem(item.id, {quantity:1}); renderInventory(); return; }
@@ -570,8 +634,14 @@ function renderInventory() {
     _invListEl.innerHTML = `<div class="empty-state"><div class="empty-state__icon">🔍</div><div class="empty-state__title">No items match</div><div class="empty-state__subtitle">"${escHtml(_invSearch)}"</div></div>`;
     return;
   }
-  const grouped = groupBy(filtered, i => i.category);
+  const staples    = filtered.filter(i => i.staple).sort((a, b) => a.name.localeCompare(b.name));
+  const nonStaples = filtered.filter(i => !i.staple);
+  const grouped    = groupBy(nonStaples, i => i.category);
   let html = '', idx = 0;
+  if (staples.length > 0) {
+    html += `<div class="section-header">⭐ Staples</div>`;
+    staples.forEach(item => { html += renderInvCard(item, idx++); });
+  }
   CATEGORIES.forEach(cat => {
     const items = grouped[cat];
     if (!items || !items.length) return;
@@ -603,6 +673,7 @@ function renderInvCard(item, index) {
           </div>
         </div>
         <div class="swipe-card__right">
+          <button class="star-btn" data-id="${item.id}" title="Toggle staple">${item.staple ? '⭐' : '☆'}</button>
           <span class="days-chip ${getExpiryClass(days)}">${getDaysLabel(days)}</span>
           <button class="minus-btn" data-id="${item.id}">−</button>
         </div>
@@ -670,7 +741,8 @@ function invHandleDecrement(id) {
 function invHandleUsedItAll(id) {
   const item = getInventoryItem(id);
   if (!item) return;
-  const { name, category } = item;
+  const { name, category, quantity, unit } = item;
+  appendUseLog({ name, category, quantity, unit });
   removeInventoryItem(id);
   renderInventory();
   showToast(`Gone! Add ${name} to your shopping list?`, { actionLabel: 'Add', action: () => {
@@ -692,6 +764,7 @@ function openEditSheet(id) {
       <input type="hidden" id="editId" value="${item.id}">
       <div class="form-row"><div class="input-group"><label class="input-label">Name</label><input class="input" id="editName" type="text" value="${escHtml(item.name)}" autocomplete="off"></div></div>
       <div class="form-row"><div class="input-group"><label class="input-label">Category</label><select class="input" id="editCategory">${catOpts}</select></div></div>
+      <div class="form-row"><div class="input-group" style="flex-direction:row;align-items:center;justify-content:space-between"><label class="input-label" style="margin:0">Staple item</label><input type="checkbox" id="editStaple" ${item.staple ? 'checked' : ''} style="width:20px;height:20px;accent-color:var(--color-accent)"></div></div>
       <div class="form-row form-row--inline">
         <div class="input-group"><label class="input-label">Quantity</label><input class="input" id="editQty" type="number" min="0" step="0.25" value="${item.quantity}"></div>
         <div class="input-group"><label class="input-label">Unit</label>
@@ -711,6 +784,7 @@ function openEditSheet(id) {
       const changes = {
         name:       el.querySelector('#editName').value.trim(),
         category:   el.querySelector('#editCategory').value,
+        staple:     el.querySelector('#editStaple').checked,
         quantity:   parseFloat(el.querySelector('#editQty').value) || 1,
         unit:       el.querySelector('#editUnit').value === 'Custom…' ? (el.querySelector('#editUnitCustom').value.trim() || 'unit') : el.querySelector('#editUnit').value,
         dateFrozen: el.querySelector('#editDateFrozen').value,
@@ -763,6 +837,7 @@ function mountAdd(el) {
       <div class="input-group"><label class="input-label">Date Frozen</label><input class="input" id="addDateFrozen" type="date"></div>
       <div class="input-group"><label class="input-label">Use By</label><input class="input" id="addUseBy" type="date"></div>
     </div>
+    <div class="form-row"><div class="input-group" style="flex-direction:row;align-items:center;justify-content:space-between"><label class="input-label" style="margin:0">Staple item</label><input type="checkbox" id="addStaple" style="width:20px;height:20px;accent-color:var(--color-accent)"></div></div>
     <div style="margin-top:8px"><button class="btn btn--primary" id="addSaveBtn" type="button">Save to Freezer</button></div>`;
 
   const nameInput = el.querySelector('#addName');
@@ -851,7 +926,8 @@ function handleAddSave() {
   const unit       = rawUnit === 'Custom…' ? (_addContainer.querySelector('#addUnitCustom')?.value.trim() || 'unit') : rawUnit;
   const dateFrozen = _addContainer.querySelector('#addDateFrozen').value || today();
   const useByDate  = _addContainer.querySelector('#addUseBy').value || addMonths(dateFrozen, CATEGORY_DEFAULTS_MONTHS[_addCategory]||3);
-  addInventoryItem({ name, category: _addCategory, quantity: _addQuantity, unit, dateFrozen, useByDate });
+  const staple = _addContainer.querySelector('#addStaple')?.checked || false;
+  addInventoryItem({ name, category: _addCategory, quantity: _addQuantity, unit, dateFrozen, useByDate, staple });
   incrementItemUseCount(name);
   if (!getItemByName(name)) addToItemList({ name, category: _addCategory, defaultUnit: unit, isDefault: false, useCount: 1 });
 
@@ -873,6 +949,8 @@ function addResetForm() {
   _addContainer.querySelector('#addUnit').innerHTML = '';
   const customInp = _addContainer.querySelector('#addUnitCustom');
   if (customInp) { customInp.value = ''; customInp.style.display = 'none'; }
+  const stapleChk = _addContainer.querySelector('#addStaple');
+  if (stapleChk) stapleChk.checked = false;
   _addContainer.querySelector('#addUseBy').value = '';
   _addContainer.querySelector('#addName').focus();
 }
@@ -1196,6 +1274,20 @@ function initSettings(onClose) {
         </div>
       </div>
       <div class="settings-section">
+        <h2>Staple Minimums</h2>
+        <div class="settings-item" id="stapleMinList">
+          ${(function() {
+            const staples = (storeRead(STORE_KEYS.inventory) || []).filter(i => i.staple).sort((a,b) => a.name.localeCompare(b.name));
+            if (!staples.length) return '<p style="font-size:13px;color:var(--color-text-secondary)">No staples yet. Star an item in inventory to mark it as a staple.</p>';
+            return staples.map(item => `
+              <div class="settings-row" style="padding:8px 0">
+                <div><div class="settings-row__label">${escHtml(item.name)}</div><div class="settings-row__sub">${item.quantity} ${escHtml(item.unit)} on hand</div></div>
+                <div class="settings-row__right"><input class="input" type="number" min="0" step="0.5" placeholder="min" data-staple-min="${item.id}" value="${item.minQty != null ? item.minQty : ''}" style="width:64px;text-align:center;padding:6px 8px"></div>
+              </div>`).join('');
+          })()}
+        </div>
+      </div>
+      <div class="settings-section">
         <h2>Data</h2>
         <div class="settings-item"><div class="settings-row"><div><div class="settings-row__label">Clear all data</div><div class="settings-row__sub">Removes all inventory, shopping, and custom items</div></div><button class="btn btn--danger" id="clearDataBtn">Clear</button></div></div>
       </div>
@@ -1228,6 +1320,14 @@ function initSettings(onClose) {
     if (!confirm('Delete ALL inventory, shopping list, and custom items? This cannot be undone.')) return;
     clearAllData(); initStore(); overlay.classList.remove('is-open');
     _mounted.clear(); switchTab('home');
+  });
+
+  overlay.querySelectorAll('input[data-staple-min]').forEach(input => {
+    input.addEventListener('change', () => {
+      const val = input.value.trim();
+      const minQty = val === '' ? null : parseFloat(val);
+      updateInventoryItem(input.dataset.stapleMin, { minQty });
+    });
   });
 
   // Firebase buttons
