@@ -506,25 +506,24 @@ function refreshHome() {
   const inventory = getInventory();
   const shopping  = getShoppingList();
   const urgent    = inventory.filter(i => daysUntil(i.useByDate) <= 7).length;
-  const staples   = inventory.filter(i => i.staple);
+  const lowStaples = inventory.filter(i => i.staple && i.minQty != null && i.quantity < i.minQty);
 
   _homeContainer.querySelector('#summaryStrip').innerHTML = `
     <div class="summary-pill"><div class="summary-pill__val">${inventory.length}</div><div class="summary-pill__label">In Freezer</div></div>
     <div class="summary-pill"><div class="summary-pill__val ${urgent > 0 ? 'has-alert' : ''}">${urgent}</div><div class="summary-pill__label">Expiring Soon</div></div>
     <div class="summary-pill"><div class="summary-pill__val">${shopping.filter(i=>!i.completed).length}</div><div class="summary-pill__label">To Buy</div></div>`;
 
-  // Staples section
+  // Staples running low section
   const staplesSection = _homeContainer.querySelector('#staplesSection');
-  if (staples.length > 0) {
-    let shtml = `<div class="section-header">⭐ Staples</div>`;
-    staples.sort((a,b) => a.name.localeCompare(b.name)).forEach((item, i) => {
-      const isLow = item.minQty != null && item.quantity < item.minQty;
+  if (lowStaples.length > 0) {
+    let shtml = `<div class="section-header">⭐ Staples Running Low</div>`;
+    lowStaples.sort((a,b) => a.name.localeCompare(b.name)).forEach((item, i) => {
       shtml += `<div class="staple-row animate-slide-up" style="--i:${i}">
         <div class="staple-row__info">
-          <div class="staple-row__name">${escHtml(item.name)}${isLow ? ' <span class="low-badge">Low</span>' : ''}</div>
-          <div class="staple-row__qty">${item.quantity} ${escHtml(item.unit)}${item.minQty ? ` · min ${item.minQty}` : ''}</div>
+          <div class="staple-row__name">${escHtml(item.name)} <span class="low-badge">Low</span></div>
+          <div class="staple-row__qty">${item.quantity} ${escHtml(item.unit)} · min ${item.minQty}</div>
         </div>
-        <button class="btn btn--ghost staple-shop-btn" data-id="${item.id}" style="font-size:12px;padding:6px 12px;flex-shrink:0">+ List</button>
+        <button class="btn btn--ghost staple-shop-btn" data-id="${item.id}" style="font-size:12px;padding:6px 12px;flex-shrink:0">Add to Shopping List</button>
       </div>`;
     });
     staplesSection.innerHTML = shtml;
@@ -543,7 +542,7 @@ function refreshHome() {
   const expiring = inventory.filter(i => daysUntil(i.useByDate) <= 30).sort((a,b) => a.useByDate.localeCompare(b.useByDate));
   const section  = _homeContainer.querySelector('#expiringSection');
   if (expiring.length === 0) {
-    section.innerHTML = staples.length === 0 ? `<div class="empty-state" style="padding:32px 0 16px"><div class="empty-state__icon">✅</div><div class="empty-state__title">Your freezer looks good!</div><div class="empty-state__subtitle">Nothing expiring in the next 30 days.</div></div>` : '';
+    section.innerHTML = lowStaples.length === 0 ? `<div class="empty-state" style="padding:32px 0 16px"><div class="empty-state__icon">✅</div><div class="empty-state__title">Your freezer looks good!</div><div class="empty-state__subtitle">Nothing expiring soon, no staples running low.</div></div>` : '';
     return;
   }
   let html = `<div class="section-header">⏰ Expiring Soon</div>`;
@@ -927,6 +926,41 @@ function handleAddSave() {
   const dateFrozen = _addContainer.querySelector('#addDateFrozen').value || today();
   const useByDate  = _addContainer.querySelector('#addUseBy').value || addMonths(dateFrozen, CATEGORY_DEFAULTS_MONTHS[_addCategory]||3);
   const staple = _addContainer.querySelector('#addStaple')?.checked || false;
+
+  // Check if this item already exists in inventory
+  const existing = getInventory().filter(i => i.name.toLowerCase() === name.toLowerCase());
+  if (existing.length > 0) {
+    const ex = existing[0];
+    showSheet(`
+      <div class="sheet-handle"></div>
+      <div class="sheet-header"><h2>Already in Freezer</h2><button class="btn btn--icon" data-action="cancel">✕</button></div>
+      <div class="sheet-body">
+        <p style="color:var(--color-text-secondary);font-size:14px;margin-bottom:20px">You already have <strong>${escHtml(ex.name)}</strong> in your freezer (${ex.quantity} ${escHtml(ex.unit)}).</p>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <button class="btn btn--primary" id="addToExisting">Add ${_addQuantity} ${escHtml(unit)} to existing (→ ${ex.quantity + _addQuantity} ${escHtml(ex.unit)})</button>
+          <button class="btn btn--ghost" id="addAsNew">Create separate entry</button>
+        </div>
+      </div>`, {});
+    setTimeout(() => {
+      document.getElementById('addToExisting')?.addEventListener('click', () => {
+        updateInventoryItem(ex.id, { quantity: ex.quantity + _addQuantity });
+        hideSheet(); addResetForm();
+        showToast(`Added ${_addQuantity} to existing ${escHtml(ex.name)}`);
+        if (_invContainer) refreshInventory();
+        refreshHome();
+      });
+      document.getElementById('addAsNew')?.addEventListener('click', () => {
+        addInventoryItem({ name, category: _addCategory, quantity: _addQuantity, unit, dateFrozen, useByDate, staple });
+        incrementItemUseCount(name);
+        hideSheet(); addResetForm();
+        showToast(`${escHtml(name)} added`);
+        if (_invContainer) refreshInventory();
+        refreshHome();
+      });
+    }, 50);
+    return;
+  }
+
   addInventoryItem({ name, category: _addCategory, quantity: _addQuantity, unit, dateFrozen, useByDate, staple });
   incrementItemUseCount(name);
   if (!getItemByName(name)) addToItemList({ name, category: _addCategory, defaultUnit: unit, isDefault: false, useCount: 1 });
@@ -1073,115 +1107,73 @@ function fallbackCopy(text) {
   ta.remove();
 }
 
-// ── tabs/meals.js ─────────────────────────────
+// ── tabs/plan.js (replaces meals) ─────────────
 
-let _mealsContainer  = null;
-let _mealsMode       = 'heat';
-let _mealsOffset     = 0;
+let _mealsContainer = null;
 
 function mountMeals(el) {
   _mealsContainer = el;
-  el.innerHTML = `
-    <div class="segmented-control">
-      <button class="segmented-btn is-active" data-mode="heat">🔥 Just heat it up</button>
-      <button class="segmented-btn" data-mode="cook">🍳 I'm cooking</button>
-    </div>
-    <div id="mealsContent"></div>`;
-  el.querySelector('.segmented-control').addEventListener('click', e => {
-    const btn = e.target.closest('[data-mode]');
-    if (btn) setMealsMode(btn.dataset.mode);
-  });
-  renderMealsContent();
+  el.innerHTML = `<div id="planContent"></div>`;
+  renderPlan();
 }
 
-function refreshMeals() { _mealsOffset = 0; updateMealsSegmented(); renderMealsContent(); }
+function refreshMeals() { renderPlan(); }
 
-function setMealsMode(mode) {
-  _mealsMode = mode; _mealsOffset = 0;
-  updateMealsSegmented(); renderMealsContent();
-}
-
-function updateMealsSegmented() {
-  _mealsContainer?.querySelectorAll('.segmented-btn').forEach(b => b.classList.toggle('is-active', b.dataset.mode === _mealsMode));
-}
-
-function renderMealsContent() {
-  const content = _mealsContainer?.querySelector('#mealsContent');
+function renderPlan() {
+  const content = _mealsContainer?.querySelector('#planContent');
   if (!content) return;
-  _mealsMode === 'heat' ? renderMealsHeat(content) : renderMealsCook(content);
-}
+  const inv = getInventory();
+  let html = '';
 
-function renderMealsHeat(content) {
-  const meals = getInventory().filter(i => i.category === 'Full Meals').sort((a,b)=>a.useByDate.localeCompare(b.useByDate));
-  if (!meals.length) {
-    content.innerHTML = `<div class="empty-state"><div class="empty-state__icon">🍱</div><div class="empty-state__title">No freezer meals right now</div><div class="empty-state__subtitle">Add some Full Meals to see them here</div></div>`;
+  // Section 1: Use Soon (expiring within 30 days)
+  const useSoon = inv.filter(i => { const d = daysUntil(i.useByDate); return d !== null && d <= 30; })
+    .sort((a,b) => a.useByDate.localeCompare(b.useByDate));
+  if (useSoon.length > 0) {
+    html += `<div class="section-header">⏰ Use Soon</div>`;
+    useSoon.forEach((item, i) => {
+      const days = daysUntil(item.useByDate);
+      html += `<div class="plan-row animate-slide-up" style="--i:${i}">
+        <div class="plan-row__info">
+          <div class="plan-row__name">${escHtml(item.name)}</div>
+          <div class="plan-row__meta">${item.quantity} ${escHtml(item.unit)} · <span class="badge ${CATEGORY_BADGE_CLASS[item.category]||'badge--other'}">${item.category}</span></div>
+        </div>
+        <span class="days-chip ${getExpiryClass(days)}">${getDaysLabel(days)}</span>
+      </div>`;
+    });
+  }
+
+  // Section 2: Full Meals ready to heat
+  const meals = inv.filter(i => i.category === 'Full Meals').sort((a,b) => a.useByDate.localeCompare(b.useByDate));
+  if (meals.length > 0) {
+    html += `<div class="section-header">🍱 Ready to Heat</div>`;
+    meals.forEach((item, i) => {
+      const days = daysUntil(item.useByDate);
+      html += `<div class="plan-row animate-slide-up" style="--i:${i}">
+        <div class="plan-row__info">
+          <div class="plan-row__name">${escHtml(item.name)}</div>
+          <div class="plan-row__meta">${item.quantity} ${escHtml(item.unit)}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="days-chip ${getExpiryClass(days)}">${getDaysLabel(days)}</span>
+          <button class="btn btn--ghost" style="font-size:12px;padding:6px 10px" data-plan-used="${item.id}">Used</button>
+        </div>
+      </div>`;
+    });
+  }
+
+  if (!html) {
+    content.innerHTML = `<div class="empty-state"><div class="empty-state__icon">📋</div><div class="empty-state__title">Nothing to plan right now</div><div class="empty-state__subtitle">Items expiring soon and full meals will appear here.</div></div>`;
     return;
   }
-  const rotated = [...meals.slice(_mealsOffset), ...meals.slice(0, _mealsOffset)];
-  const shown   = rotated.slice(0, 3);
-  let html = `<div class="section-header">🍱 Ready to Heat</div>`;
-  shown.forEach((item, i) => {
-    const days = daysUntil(item.useByDate);
-    html += `<div class="meal-card animate-slide-up" style="--i:${i}">
-      <div class="meal-card__name">${escHtml(item.name)}</div>
-      <div class="meal-card__meta"><span style="font-size:13px;color:var(--color-text-secondary)">${item.quantity} ${escHtml(item.unit)}</span><span class="days-chip ${getExpiryClass(days)}">${getDaysLabel(days)}</span></div>
-      <div class="meal-card__footer"><span></span><button class="btn btn--ghost" style="font-size:13px;padding:8px 14px" data-action="mark-used" data-id="${item.id}">Mark as used</button></div>
-    </div>`;
+  content.innerHTML = html;
+  content.querySelectorAll('[data-plan-used]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const item = getInventoryItem(btn.dataset.planUsed);
+      if (!item) return;
+      invHandleUsedItAll(item.id);
+      renderPlan();
+    });
   });
-  if (meals.length > 3) html += `<div class="shuffle-wrap"><button class="btn btn--ghost" id="shuffleBtn">🔀 Shuffle</button></div>`;
-  content.innerHTML = html;
-  content.querySelector('#shuffleBtn')?.addEventListener('click', () => { _mealsOffset = (_mealsOffset + 3) % meals.length; renderMealsContent(); });
-  content.querySelectorAll('[data-action="mark-used"]').forEach(btn => btn.addEventListener('click', () => mealsMarkUsed(btn.dataset.id)));
-}
-
-function renderMealsCook(content) {
-  const inv      = getInventory();
-  const proteins = inv.filter(i => i.category === 'Protein').sort((a,b)=>a.useByDate.localeCompare(b.useByDate));
-  const produce  = inv.filter(i => i.category === 'Produce').sort((a,b)=>a.useByDate.localeCompare(b.useByDate));
-  const other    = inv.filter(i => i.category === 'Other').sort((a,b)=>a.useByDate.localeCompare(b.useByDate));
-  if (!proteins.length && !produce.length) {
-    content.innerHTML = `<div class="empty-state"><div class="empty-state__icon">🛒</div><div class="empty-state__title">Nothing to cook with</div><div class="empty-state__subtitle">Add some Protein and Produce to your freezer</div></div>`;
-    return;
-  }
-  const protein = proteins[_mealsOffset % Math.max(proteins.length, 1)] || null;
-  const veg     = produce[_mealsOffset  % Math.max(produce.length, 1)]  || null;
-  const extra   = other[_mealsOffset   % Math.max(other.length, 1)]    || null;
-  let html = `<div class="section-header">🍳 Tonight's Combo</div><div class="combo-card"><div class="combo-card__header">Suggested ingredients</div>`;
-  html += protein ? renderComboItem(protein, '🥩') : `<div class="combo-item"><div class="combo-item__info"><div class="combo-item__name" style="color:var(--color-text-secondary)">No Protein in freezer</div></div></div>`;
-  html += veg     ? renderComboItem(veg, '🥦')     : `<div class="combo-item"><div class="combo-item__info"><div class="combo-item__name" style="color:var(--color-text-secondary)">No Produce in freezer</div></div></div>`;
-  if (extra) html += renderComboItem(extra, '📦');
-  html += `</div>`;
-  if (protein && veg) {
-    const q = encodeURIComponent(`${protein.name} ${veg.name} recipe`);
-    html += `<div style="margin-top:8px;text-align:center"><a class="recipe-link" href="https://www.google.com/search?q=${q}" target="_blank" rel="noopener">🔍 Search recipes →</a></div>`;
-  }
-  if (proteins.length > 1 || produce.length > 1 || other.length > 1)
-    html += `<div class="shuffle-wrap"><button class="btn btn--ghost" id="shuffleBtn">🔀 Different combo</button></div>`;
-  content.innerHTML = html;
-  content.querySelector('#shuffleBtn')?.addEventListener('click', () => { _mealsOffset++; renderMealsContent(); });
-  content.querySelectorAll('[data-action="mark-used"]').forEach(btn => btn.addEventListener('click', () => mealsMarkUsed(btn.dataset.id)));
-}
-
-function renderComboItem(item, icon) {
-  const days = daysUntil(item.useByDate);
-  return `<div class="combo-item">
-    <div class="combo-item__info"><div class="combo-item__name">${icon} ${escHtml(item.name)}</div><div class="combo-item__sub">${item.quantity} ${escHtml(item.unit)}</div></div>
-    <span class="days-chip ${getExpiryClass(days)}" style="font-size:12px">${getDaysLabel(days)}</span>
-    <button class="btn btn--ghost" style="font-size:12px;padding:6px 10px;margin-left:8px" data-action="mark-used" data-id="${item.id}">Used</button>
-  </div>`;
-}
-
-function mealsMarkUsed(id) {
-  const item = getInventory().find(i => i.id === id);
-  if (!item) return;
-  const { name, category } = item;
-  removeInventoryItem(id);
-  renderMealsContent();
-  showToast(`Marked ${name} as used. Add to shopping list?`, { actionLabel: 'Add', action: () => {
-    const known = getItemByName(name);
-    addShoppingItem({ name, category: known?.category || category });
-    refreshShopping();
-  }});
 }
 
 // ── settings.js ───────────────────────────────
@@ -1295,6 +1287,24 @@ function initSettings(onClose) {
 
   overlay.classList.add('is-open');
 
+  // Collapsible sections — click h2 to toggle
+  overlay.querySelectorAll('.settings-section h2').forEach(h2 => {
+    h2.style.cursor = 'pointer';
+    h2.style.display = 'flex';
+    h2.style.justifyContent = 'space-between';
+    h2.style.alignItems = 'center';
+    const chevron = document.createElement('span');
+    chevron.textContent = '▾';
+    chevron.style.fontSize = '12px';
+    chevron.style.transition = 'transform 0.2s';
+    h2.appendChild(chevron);
+    h2.addEventListener('click', () => {
+      const section = h2.closest('.settings-section');
+      const isCollapsed = section.classList.toggle('is-collapsed');
+      chevron.style.transform = isCollapsed ? 'rotate(-90deg)' : '';
+    });
+  });
+
   overlay.querySelector('#settingsClose').addEventListener('click', () => { overlay.classList.remove('is-open'); if (onClose) onClose(); });
 
   const apiInput  = overlay.querySelector('#apiKeyInput');
@@ -1382,7 +1392,7 @@ const TAB_CONFIG = {
   inventory: { title: 'Inventory',  mount: mountInventory, refresh: refreshInventory },
   add:       { title: 'Add Item',   mount: mountAdd,       refresh: refreshAdd },
   shopping:  { title: 'Shopping',   mount: mountShopping,  refresh: refreshShopping },
-  meals:     { title: 'Meals',      mount: mountMeals,     refresh: refreshMeals },
+  meals:     { title: 'Plan',       mount: mountMeals,     refresh: refreshMeals },
 };
 
 const _mounted = new Set();

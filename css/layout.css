@@ -248,4 +248,7 @@ body {
   letter-spacing: 0.8px;
   color: var(--color-text-secondary);
   margin-bottom: 12px;
+  user-select: none;
 }
+.settings-section.is-collapsed h2 { margin-bottom: 0; }
+.settings-section.is-collapsed .settings-item { display: none; }
