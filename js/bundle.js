@@ -1318,7 +1318,11 @@ function initSettings(onClose) {
 
   overlay.querySelector('#clearDataBtn').addEventListener('click', () => {
     if (!confirm('Delete ALL inventory, shopping list, and custom items? This cannot be undone.')) return;
-    clearAllData(); initStore(); overlay.classList.remove('is-open');
+    // Prevent empty arrays from propagating to Firestore during re-init
+    _syncing = true;
+    clearAllData(); initStore();
+    _syncing = false;
+    overlay.classList.remove('is-open');
     _mounted.clear(); switchTab('home');
   });
 
@@ -1430,6 +1434,8 @@ var _syncing     = false; // prevent feedback loops
 // Called by storeWrite on every localStorage change
 function _onStoreWrite(key, value) {
   if (!_db || !_fbUser || _syncing) return;
+  // Never silently erase inventory in Firestore with an empty array
+  if (key === STORE_KEYS.inventory && Array.isArray(value) && value.length === 0) return;
   const docName = key.replace('frosttrack_', '');
   _db.collection('users').doc(_fbUser.uid)
     .collection('data').doc(docName)
@@ -1446,6 +1452,9 @@ function fbInit(config) {
     }
     _db   = firebase.firestore();
     _auth = firebase.auth();
+
+    // Keep login alive across refreshes and app restarts
+    _auth.setPersistence('local').catch(() => {});
 
     _auth.onAuthStateChanged(user => {
       _fbUser = user;
