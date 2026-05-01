@@ -661,7 +661,19 @@ function mountInventory(el) {
   _invListEl = el.querySelector('#inventoryList');
   el.querySelector('#inventorySearch').addEventListener('input', e => { _invSearch = e.target.value.trim().toLowerCase(); renderInventory(); });
   _invListEl.addEventListener('click', e => {
-    if (e.target.closest('.inv-section__hdr')) return; // handled by per-section listener
+    // Section header collapse (handled here in the permanent listener, not per-render)
+    const hdr = e.target.closest('.inv-section__hdr');
+    if (hdr) {
+      const sec     = hdr.closest('.inv-section');
+      const key     = sec && sec.dataset.sk;
+      const body    = sec && sec.querySelector('.inv-section__body');
+      const chevron = hdr.querySelector('.section-chevron');
+      if (!key || !body) return;
+      _invCollapsed[key] = !_invCollapsed[key];
+      body.style.display      = _invCollapsed[key] ? 'none' : '';
+      chevron.style.transform = _invCollapsed[key] ? 'rotate(-90deg)' : '';
+      return;
+    }
     const star    = e.target.closest('.star-btn');
     const minus   = e.target.closest('.minus-btn');
     const confirm = e.target.closest('[data-action="confirm-used"]');
@@ -697,8 +709,8 @@ function renderInventory() {
 
   function invSectionHtml(key, headerHtml, items) {
     let s = `<div class="inv-section" data-sk="${escHtml(key)}">
-      <div class="inv-section__hdr section-header">
-        <span>${headerHtml}</span><span class="section-chevron">▾</span>
+      <div class="inv-section__hdr section-header" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none">
+        <span>${headerHtml}</span><span class="section-chevron" style="font-size:12px;transition:transform 0.2s">▾</span>
       </div>
       <div class="inv-section__body">`;
     items.forEach(item => { s += renderInvCard(item, idx++); });
@@ -715,18 +727,12 @@ function renderInventory() {
 
   _invListEl.innerHTML = html;
 
-  // Restore collapse state & wire toggle for each section
+  // Restore saved collapse state (toggling is handled by the permanent delegated listener)
   _invListEl.querySelectorAll('.inv-section').forEach(sec => {
     const key     = sec.dataset.sk;
     const body    = sec.querySelector('.inv-section__body');
     const chevron = sec.querySelector('.section-chevron');
-    const hdr     = sec.querySelector('.inv-section__hdr');
     if (_invCollapsed[key]) { body.style.display = 'none'; chevron.style.transform = 'rotate(-90deg)'; }
-    hdr.addEventListener('click', () => {
-      _invCollapsed[key] = !_invCollapsed[key];
-      body.style.display     = _invCollapsed[key] ? 'none' : '';
-      chevron.style.transform = _invCollapsed[key] ? 'rotate(-90deg)' : '';
-    });
   });
 
   _invListEl.querySelectorAll('.swipe-card').forEach(cardEl => {
