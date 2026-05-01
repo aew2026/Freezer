@@ -490,7 +490,8 @@ function initSwipeReveal(cardElement, { onUsedItAll, onDelete }) {
 
 // ── tabs/home.js ──────────────────────────────
 
-let _homeContainer = null;
+let _homeContainer  = null;
+let _homeCollapsed  = { staples: false, expiring: false };
 
 function mountHome(el) {
   _homeContainer = el;
@@ -539,9 +540,14 @@ function refreshHome() {
     shtml += `</div></div>`;
     staplesSection.innerHTML = shtml;
 
+    // Apply saved collapse state, then wire toggle
+    const staplesBody    = staplesSection.querySelector('.home-section__body');
+    const staplesChevron = staplesSection.querySelector('.section-chevron');
+    if (_homeCollapsed.staples) { staplesBody.style.display = 'none'; staplesChevron.style.transform = 'rotate(-90deg)'; }
     staplesSection.querySelector('.home-section__hdr').addEventListener('click', () => {
-      const collapsed = staplesSection.querySelector('.home-section').classList.toggle('is-collapsed');
-      staplesSection.querySelector('.section-chevron').style.transform = collapsed ? 'rotate(-90deg)' : '';
+      _homeCollapsed.staples = !_homeCollapsed.staples;
+      staplesBody.style.display    = _homeCollapsed.staples ? 'none' : '';
+      staplesChevron.style.transform = _homeCollapsed.staples ? 'rotate(-90deg)' : '';
     });
     staplesSection.querySelectorAll('.staple-shop-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -597,9 +603,14 @@ function refreshHome() {
   html += `</div></div>`;
   expiringSection.innerHTML = html;
 
+  // Apply saved collapse state, then wire toggle
+  const expBody    = expiringSection.querySelector('.home-section__body');
+  const expChevron = expiringSection.querySelector('.section-chevron');
+  if (_homeCollapsed.expiring) { expBody.style.display = 'none'; expChevron.style.transform = 'rotate(-90deg)'; }
   expiringSection.querySelector('.home-section__hdr').addEventListener('click', () => {
-    const collapsed = expiringSection.querySelector('.home-section').classList.toggle('is-collapsed');
-    expiringSection.querySelector('.section-chevron').style.transform = collapsed ? 'rotate(-90deg)' : '';
+    _homeCollapsed.expiring = !_homeCollapsed.expiring;
+    expBody.style.display    = _homeCollapsed.expiring ? 'none' : '';
+    expChevron.style.transform = _homeCollapsed.expiring ? 'rotate(-90deg)' : '';
   });
 }
 
@@ -637,6 +648,7 @@ function showAddToShoppingSheet(item) {
 let _invContainer = null;
 let _invListEl    = null;
 let _invSearch    = '';
+let _invCollapsed = {}; // { sectionKey: true/false }
 
 function mountInventory(el) {
   _invContainer = el;
@@ -649,6 +661,7 @@ function mountInventory(el) {
   _invListEl = el.querySelector('#inventoryList');
   el.querySelector('#inventorySearch').addEventListener('input', e => { _invSearch = e.target.value.trim().toLowerCase(); renderInventory(); });
   _invListEl.addEventListener('click', e => {
+    if (e.target.closest('.inv-section__hdr')) return; // handled by per-section listener
     const star    = e.target.closest('.star-btn');
     const minus   = e.target.closest('.minus-btn');
     const confirm = e.target.closest('[data-action="confirm-used"]');
@@ -667,7 +680,7 @@ function refreshInventory() { renderInventory(); }
 
 function renderInventory() {
   if (!_invListEl) return;
-  const all = getInventory();
+  const all      = getInventory();
   const filtered = _invSearch ? all.filter(i => i.name.toLowerCase().includes(_invSearch)) : all;
   if (all.length === 0) {
     _invListEl.innerHTML = `<div class="empty-state"><div class="empty-state__icon">🧊</div><div class="empty-state__title">Your freezer is empty</div><div class="empty-state__subtitle">Tap + to add your first item</div></div>`;
@@ -681,17 +694,41 @@ function renderInventory() {
   const nonStaples = filtered.filter(i => !i.staple);
   const grouped    = groupBy(nonStaples, i => i.category);
   let html = '', idx = 0;
-  if (staples.length > 0) {
-    html += `<div class="section-header">⭐ Staples</div>`;
-    staples.forEach(item => { html += renderInvCard(item, idx++); });
+
+  function invSectionHtml(key, headerHtml, items) {
+    let s = `<div class="inv-section" data-sk="${escHtml(key)}">
+      <div class="inv-section__hdr section-header">
+        <span>${headerHtml}</span><span class="section-chevron">▾</span>
+      </div>
+      <div class="inv-section__body">`;
+    items.forEach(item => { s += renderInvCard(item, idx++); });
+    s += `</div></div>`;
+    return s;
   }
+
+  if (staples.length > 0)    html += invSectionHtml('Staples', '⭐ Staples', staples);
   CATEGORIES.forEach(cat => {
     const items = grouped[cat];
     if (!items || !items.length) return;
-    html += `<div class="section-header">${CATEGORY_ICONS[cat]} ${cat}</div>`;
-    items.forEach(item => { html += renderInvCard(item, idx++); });
+    html += invSectionHtml(cat, `${CATEGORY_ICONS[cat]} ${cat}`, items);
   });
+
   _invListEl.innerHTML = html;
+
+  // Restore collapse state & wire toggle for each section
+  _invListEl.querySelectorAll('.inv-section').forEach(sec => {
+    const key     = sec.dataset.sk;
+    const body    = sec.querySelector('.inv-section__body');
+    const chevron = sec.querySelector('.section-chevron');
+    const hdr     = sec.querySelector('.inv-section__hdr');
+    if (_invCollapsed[key]) { body.style.display = 'none'; chevron.style.transform = 'rotate(-90deg)'; }
+    hdr.addEventListener('click', () => {
+      _invCollapsed[key] = !_invCollapsed[key];
+      body.style.display     = _invCollapsed[key] ? 'none' : '';
+      chevron.style.transform = _invCollapsed[key] ? 'rotate(-90deg)' : '';
+    });
+  });
+
   _invListEl.querySelectorAll('.swipe-card').forEach(cardEl => {
     const id = cardEl.dataset.id;
     initSwipeReveal(cardEl, { onUsedItAll: () => invHandleUsedItAll(id), onDelete: () => { removeInventoryItem(id); renderInventory(); } });
@@ -1331,7 +1368,7 @@ function initSettings(onClose) {
 
   overlay.classList.add('is-open');
 
-  // Collapsible sections — click h2 to toggle
+  // Collapsible sections — click h2 to toggle (JS-driven, no CSS dependency)
   overlay.querySelectorAll('.settings-section h2').forEach(h2 => {
     h2.style.cursor = 'pointer';
     h2.style.display = 'flex';
@@ -1343,9 +1380,11 @@ function initSettings(onClose) {
     chevron.style.transition = 'transform 0.2s';
     h2.appendChild(chevron);
     h2.addEventListener('click', () => {
-      const section = h2.closest('.settings-section');
-      const isCollapsed = section.classList.toggle('is-collapsed');
-      chevron.style.transform = isCollapsed ? 'rotate(-90deg)' : '';
+      const section  = h2.closest('.settings-section');
+      const items    = section.querySelectorAll('.settings-item');
+      const nowHide  = items.length > 0 && items[0].style.display !== 'none';
+      items.forEach(item => { item.style.display = nowHide ? 'none' : ''; });
+      chevron.style.transform = nowHide ? 'rotate(-90deg)' : '';
     });
   });
 

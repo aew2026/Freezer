@@ -1,21 +1,22 @@
-const CACHE_NAME = 'frosttrack-v5';
+const CACHE_NAME = 'frosttrack-v6';
 
-// Files that are safe to cache aggressively (rarely change)
+// Rarely-changing assets safe to pre-cache on install
 const STATIC_SHELL = [
   '/manifest.json',
-  '/css/reset.css',
-  '/css/variables.css',
-  '/css/layout.css',
-  '/css/components.css',
-  '/css/animations.css',
 ];
 
-// Files that should ALWAYS be fetched fresh from network (app logic that updates frequently)
+// Always fetch fresh from network — HTML, JS, and all CSS
+// (CSS is included here to prevent stale stylesheet bugs)
 const NETWORK_FIRST = [
   '/index.html',
   '/',
   '/js/bundle.js',
   '/sw.js',
+  '/css/reset.css',
+  '/css/variables.css',
+  '/css/layout.css',
+  '/css/components.css',
+  '/css/animations.css',
 ];
 
 self.addEventListener('install', event => {
@@ -45,8 +46,8 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   const path = url.pathname;
 
-  // Network-first for HTML and JS bundle — always get the latest code
-  const isNetworkFirst = NETWORK_FIRST.some(p => path === p || path.endsWith('/bundle.js'));
+  // Network-first for HTML, JS, and CSS — always get the latest code
+  const isNetworkFirst = NETWORK_FIRST.some(p => path === p || path.endsWith('/bundle.js') || path.endsWith('.css'));
   if (isNetworkFirst) {
     event.respondWith(
       fetch(event.request).then(response => {
