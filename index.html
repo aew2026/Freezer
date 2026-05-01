@@ -73,12 +73,16 @@
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
+      // When a new service worker activates, reload so fresh code is loaded
+      navigator.serviceWorker.addEventListener('message', e => {
+        if (e.data && e.data.type === 'SW_UPDATED') window.location.reload();
+      });
     }
   </script>
   <!-- Firebase SDK (loaded async, not required for app to work) -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-  <script src="js/bundle.js?v=19"></script>
+  <script src="js/bundle.js?v=20"></script>
 </body>
 </html>
