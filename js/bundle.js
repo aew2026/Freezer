@@ -822,6 +822,7 @@ function renderInvCard(item, index) {
         <div class="swipe-card__main">
           <div class="swipe-card__meta" style="margin-bottom:6px"><span class="badge ${CATEGORY_BADGE_CLASS[item.category]||'badge--other'}">${item.category}</span></div>
           <div class="swipe-card__name">${escHtml(item.name)}</div>
+          ${item.intendedFor ? `<div style="font-size:12px;color:var(--color-accent);margin-top:2px">🍽️ ${escHtml(item.intendedFor)}</div>` : ''}
           <div class="swipe-card__meta">
             <span class="swipe-card__qty">${item.quantity} ${escHtml(item.unit)}</span>
             <span class="swipe-card__date">${formatDate(item.useByDate)}</span>
@@ -929,6 +930,9 @@ function openEditSheet(id) {
       </div>
       <div class="form-row"><div class="input-group"><label class="input-label">Date Frozen</label><input class="input" id="editDateFrozen" type="date" value="${item.dateFrozen||''}"></div></div>
       <div class="form-row"><div class="input-group"><label class="input-label">Use By</label><input class="input" id="editUseBy" type="date" value="${item.useByDate||''}"></div></div>
+      <div class="form-row"><div class="input-group"><label class="input-label">Intended for <span style="font-weight:400;color:var(--color-text-secondary)">(optional)</span></label>
+        <input class="input" id="editIntendedFor" type="text" placeholder="e.g. Lasagna, soup night…" value="${escHtml(item.intendedFor||'')}">
+      </div></div>
     </div>
     <div class="sheet-footer">
       <button class="btn btn--ghost" style="flex:1" data-action="cancel">Cancel</button>
@@ -942,8 +946,9 @@ function openEditSheet(id) {
         staple:     el.querySelector('#editStaple').checked,
         quantity:   parseFloat(el.querySelector('#editQty').value) || 1,
         unit:       el.querySelector('#editUnit').value === 'Custom…' ? (el.querySelector('#editUnitCustom').value.trim() || 'unit') : el.querySelector('#editUnit').value,
-        dateFrozen: el.querySelector('#editDateFrozen').value,
-        useByDate:  el.querySelector('#editUseBy').value,
+        dateFrozen:   el.querySelector('#editDateFrozen').value,
+        useByDate:    el.querySelector('#editUseBy').value,
+        intendedFor:  el.querySelector('#editIntendedFor').value.trim(),
       };
       if (!changes.name) return;
       updateInventoryItem(item.id, changes);
@@ -993,6 +998,9 @@ function mountAdd(el) {
       <div class="input-group"><label class="input-label">Use By</label><input class="input" id="addUseBy" type="date"></div>
     </div>
     <div class="form-row"><div class="input-group" style="flex-direction:row;align-items:center;justify-content:space-between"><label class="input-label" style="margin:0">Staple item</label><input type="checkbox" id="addStaple" style="width:20px;height:20px;accent-color:var(--color-accent)"></div></div>
+    <div class="form-row"><div class="input-group"><label class="input-label">Intended for <span style="font-weight:400;color:var(--color-text-secondary)">(optional)</span></label>
+      <input class="input" id="addIntendedFor" type="text" placeholder="e.g. Lasagna, soup night…" autocomplete="off">
+    </div></div>
     <div style="margin-top:8px"><button class="btn btn--primary" id="addSaveBtn" type="button">Save to Freezer</button></div>`;
 
   const nameInput = el.querySelector('#addName');
@@ -1082,6 +1090,7 @@ function handleAddSave() {
   const dateFrozen = _addContainer.querySelector('#addDateFrozen').value || today();
   const useByDate  = _addContainer.querySelector('#addUseBy').value || addMonths(dateFrozen, CATEGORY_DEFAULTS_MONTHS[_addCategory]||3);
   const staple = _addContainer.querySelector('#addStaple')?.checked || false;
+  const intendedFor = (_addContainer.querySelector('#addIntendedFor')?.value || '').trim();
 
   // Check if this item already exists in inventory
   const existing = getInventory().filter(i => i.name.toLowerCase() === name.toLowerCase());
@@ -1106,7 +1115,7 @@ function handleAddSave() {
         refreshHome();
       });
       document.getElementById('addAsNew')?.addEventListener('click', () => {
-        addInventoryItem({ name, category: _addCategory, quantity: _addQuantity, unit, dateFrozen, useByDate, staple });
+        addInventoryItem({ name, category: _addCategory, quantity: _addQuantity, unit, dateFrozen, useByDate, staple, intendedFor });
         incrementItemUseCount(name);
         hideSheet(); addResetForm();
         showToast(`${escHtml(name)} added`);
@@ -1117,7 +1126,7 @@ function handleAddSave() {
     return;
   }
 
-  addInventoryItem({ name, category: _addCategory, quantity: _addQuantity, unit, dateFrozen, useByDate, staple });
+  addInventoryItem({ name, category: _addCategory, quantity: _addQuantity, unit, dateFrozen, useByDate, staple, intendedFor });
   incrementItemUseCount(name);
   if (!getItemByName(name)) addToItemList({ name, category: _addCategory, defaultUnit: unit, isDefault: false, useCount: 1 });
 
@@ -1141,6 +1150,8 @@ function addResetForm() {
   if (customInp) { customInp.value = ''; customInp.style.display = 'none'; }
   const stapleChk = _addContainer.querySelector('#addStaple');
   if (stapleChk) stapleChk.checked = false;
+  const intendedInp = _addContainer.querySelector('#addIntendedFor');
+  if (intendedInp) intendedInp.value = '';
   _addContainer.querySelector('#addUseBy').value = '';
   _addContainer.querySelector('#addName').focus();
 }
