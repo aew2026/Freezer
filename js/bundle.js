@@ -503,49 +503,87 @@ function mountHome(el) {
 
 function refreshHome() {
   if (!_homeContainer) return;
-  const inventory = getInventory();
-  const shopping  = getShoppingList();
-  const urgent    = inventory.filter(i => daysUntil(i.useByDate) <= 7).length;
+  const inventory  = getInventory();
+  const shopping   = getShoppingList();
+  const urgent     = inventory.filter(i => daysUntil(i.useByDate) <= 7).length;
   const lowStaples = inventory.filter(i => i.staple && i.minQty != null && i.quantity < i.minQty);
 
+  // Summary strip — "Running Low" replaces "In Freezer"
   _homeContainer.querySelector('#summaryStrip').innerHTML = `
-    <div class="summary-pill"><div class="summary-pill__val">${inventory.length}</div><div class="summary-pill__label">In Freezer</div></div>
+    <div class="summary-pill"><div class="summary-pill__val ${lowStaples.length > 0 ? 'has-alert' : ''}">${lowStaples.length}</div><div class="summary-pill__label">Running Low</div></div>
     <div class="summary-pill"><div class="summary-pill__val ${urgent > 0 ? 'has-alert' : ''}">${urgent}</div><div class="summary-pill__label">Expiring Soon</div></div>
     <div class="summary-pill"><div class="summary-pill__val">${shopping.filter(i=>!i.completed).length}</div><div class="summary-pill__label">To Buy</div></div>`;
 
-  // Staples running low section
+  // ── Staples Running Low ──
   const staplesSection = _homeContainer.querySelector('#staplesSection');
+  const staplesCollapsed = !!staplesSection.querySelector('.home-section.is-collapsed');
   if (lowStaples.length > 0) {
-    let shtml = `<div class="section-header">⭐ Staples Running Low</div>`;
+    let shtml = `<div class="home-section${staplesCollapsed ? ' is-collapsed' : ''}">
+      <div class="home-section__hdr section-header">
+        <span>⭐ Staples Running Low</span>
+        <span class="section-chevron" style="${staplesCollapsed ? 'transform:rotate(-90deg)' : ''}">▾</span>
+      </div>
+      <div class="home-section__body">`;
     lowStaples.sort((a,b) => a.name.localeCompare(b.name)).forEach((item, i) => {
-      shtml += `<div class="staple-row animate-slide-up" style="--i:${i}">
-        <div class="staple-row__info">
-          <div class="staple-row__name">${escHtml(item.name)} <span class="low-badge">Low</span></div>
-          <div class="staple-row__qty">${item.quantity} ${escHtml(item.unit)} · min ${item.minQty}</div>
+      shtml += `<div class="expiry-card animate-slide-up" style="--i:${i}">
+        <div class="expiry-card__info">
+          <div class="expiry-card__name">${escHtml(item.name)}</div>
+          <div class="expiry-card__qty">${item.quantity} ${escHtml(item.unit)} · min ${item.minQty}</div>
         </div>
-        <button class="btn btn--ghost staple-shop-btn" data-id="${item.id}" style="font-size:12px;padding:6px 12px;flex-shrink:0">Add to Shopping List</button>
+        <div class="staple-card-actions">
+          <button class="btn btn--icon staple-inc-btn" data-id="${item.id}" title="Add one" style="font-size:18px;width:36px;height:36px">＋</button>
+          <button class="btn btn--ghost staple-shop-btn" data-id="${item.id}" style="font-size:12px;padding:6px 10px;white-space:nowrap">Add to List</button>
+        </div>
       </div>`;
     });
+    shtml += `</div></div>`;
     staplesSection.innerHTML = shtml;
+
+    staplesSection.querySelector('.home-section__hdr').addEventListener('click', () => {
+      const collapsed = staplesSection.querySelector('.home-section').classList.toggle('is-collapsed');
+      staplesSection.querySelector('.section-chevron').style.transform = collapsed ? 'rotate(-90deg)' : '';
+    });
     staplesSection.querySelectorAll('.staple-shop-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const item = getInventoryItem(btn.dataset.id);
+        if (item) showAddToShoppingSheet(item);
+      });
+    });
+    staplesSection.querySelectorAll('.staple-inc-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item = getInventoryItem(btn.dataset.id);
         if (!item) return;
-        showAddToShoppingSheet(item);
+        const newQty = Math.round((item.quantity + 1) * 100) / 100;
+        updateInventoryItem(item.id, { quantity: newQty });
+        showToast(`${item.name}: ${newQty} ${item.unit}`);
+        refreshHome();
+        refreshInventory();
       });
     });
   } else {
     staplesSection.innerHTML = '';
   }
 
-  // Expiring soon section
+  // ── Expiring Soon ──
   const expiring = inventory.filter(i => daysUntil(i.useByDate) <= 30).sort((a,b) => a.useByDate.localeCompare(b.useByDate));
-  const section  = _homeContainer.querySelector('#expiringSection');
+  const expiringSection = _homeContainer.querySelector('#expiringSection');
+  const expiringCollapsed = !!expiringSection.querySelector('.home-section.is-collapsed');
+
+  // Extra gap when both sections are visible
+  expiringSection.style.marginTop = lowStaples.length > 0 ? '24px' : '';
+
   if (expiring.length === 0) {
-    section.innerHTML = lowStaples.length === 0 ? `<div class="empty-state" style="padding:32px 0 16px"><div class="empty-state__icon">✅</div><div class="empty-state__title">Your freezer looks good!</div><div class="empty-state__subtitle">Nothing expiring soon, no staples running low.</div></div>` : '';
+    expiringSection.innerHTML = lowStaples.length === 0
+      ? `<div class="empty-state" style="padding:32px 0 16px"><div class="empty-state__icon">✅</div><div class="empty-state__title">Your freezer looks good!</div><div class="empty-state__subtitle">Nothing expiring soon, no staples running low.</div></div>`
+      : '';
     return;
   }
-  let html = `<div class="section-header">⏰ Expiring Soon</div>`;
+  let html = `<div class="home-section${expiringCollapsed ? ' is-collapsed' : ''}">
+    <div class="home-section__hdr section-header">
+      <span>⏰ Expiring Soon</span>
+      <span class="section-chevron" style="${expiringCollapsed ? 'transform:rotate(-90deg)' : ''}">▾</span>
+    </div>
+    <div class="home-section__body">`;
   expiring.forEach((item, i) => {
     const days = daysUntil(item.useByDate);
     html += `<div class="expiry-card animate-slide-up" style="--i:${i}">
@@ -556,7 +594,13 @@ function refreshHome() {
       <span class="days-chip days-chip--large ${getExpiryClass(days)}">${getDaysLabel(days)}</span>
     </div>`;
   });
-  section.innerHTML = html;
+  html += `</div></div>`;
+  expiringSection.innerHTML = html;
+
+  expiringSection.querySelector('.home-section__hdr').addEventListener('click', () => {
+    const collapsed = expiringSection.querySelector('.home-section').classList.toggle('is-collapsed');
+    expiringSection.querySelector('.section-chevron').style.transform = collapsed ? 'rotate(-90deg)' : '';
+  });
 }
 
 function showAddToShoppingSheet(item) {

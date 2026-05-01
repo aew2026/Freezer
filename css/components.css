@@ -967,3 +967,29 @@ select.input {
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
+
+/* ── Home collapsible sections ── */
+.home-section__hdr {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+}
+.section-chevron {
+  font-size: 12px;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+}
+.home-section.is-collapsed .home-section__body {
+  display: none;
+}
+
+/* ── Staple card action buttons ── */
+.staple-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
