@@ -189,6 +189,47 @@ function escHtml(str) {
   return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// Reduce a word to a rough stem so plurals & common suffixes match
+function normalizeName(s) {
+  s = (s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  if (s.length > 5 && s.endsWith('ies')) return s.slice(0, -3) + 'y'; // berries→berry
+  if (s.length > 5 && s.endsWith('ves')) return s.slice(0, -3) + 'f'; // leaves→leaf
+  if (s.length > 4 && s.endsWith('es'))  return s.slice(0, -2);        // tomatoes→tomato
+  if (s.length > 3 && s.endsWith('s'))   return s.slice(0, -1);        // carrots→carrot
+  return s;
+}
+
+// Standard Levenshtein edit distance (O(n) space)
+function editDistance(a, b) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const row = Array.from({length: b.length + 1}, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = row[0]; row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = row[j];
+      row[j] = a[i-1] === b[j-1] ? prev : 1 + Math.min(prev, row[j], row[j-1]);
+      prev = tmp;
+    }
+  }
+  return row[b.length];
+}
+
+// Returns 'exact' | 'plural' | 'fuzzy' | null compared to a list of name strings
+function fuzzyMatchName(input, candidates) {
+  const raw   = input.toLowerCase().trim();
+  const normd = normalizeName(input);
+  for (const c of candidates) {
+    if (c.toLowerCase().trim() === raw)   return { kind: 'exact',  match: c };
+    if (normalizeName(c) === normd)        return { kind: 'plural', match: c };
+  }
+  for (const c of candidates) {
+    if (editDistance(normalizeName(c), normd) <= 2) return { kind: 'fuzzy', match: c };
+  }
+  return null;
+}
+
 // ── store.js ──────────────────────────────────
 
 const STORE_KEYS = {
@@ -267,9 +308,9 @@ function getShoppingList() { return storeRead(STORE_KEYS.shopping) || []; }
 
 function addShoppingItem(partial) {
   const items = storeRead(STORE_KEYS.shopping) || [];
-  const nameLower = (partial.name || '').toLowerCase().trim();
-  // Never add a duplicate of an active (uncompleted) item
-  if (nameLower && items.find(i => !i.completed && i.name.toLowerCase().trim() === nameLower)) return null;
+  const normd = normalizeName(partial.name || '');
+  // Never add a duplicate (exact or plural) of an active (uncompleted) item
+  if (normd && items.find(i => !i.completed && normalizeName(i.name) === normd)) return null;
   const item = { id: generateId(), name: '', category: null, note: '', completed: false,
     addedAt: new Date().toISOString(), ...partial };
   items.push(item);
@@ -282,7 +323,7 @@ function deduplicateShoppingList() {
   const items = storeRead(STORE_KEYS.shopping) || [];
   const seen = new Set();
   const deduped = items.filter(i => {
-    const key = (i.name || '').toLowerCase().trim() + ':' + (i.completed ? '1' : '0');
+    const key = normalizeName(i.name) + ':' + (i.completed ? '1' : '0');
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -1126,6 +1167,46 @@ function mountShopping(el) {
   const doAdd = () => {
     const name = input.value.trim();
     if (!name) return;
+    const active = getShoppingList().filter(i => !i.completed).map(i => i.name);
+    const hit = fuzzyMatchName(name, active);
+    if (hit && (hit.kind === 'exact' || hit.kind === 'plural')) {
+      showToast(`"${hit.match}" is already on your list`);
+      input.value = ''; return;
+    }
+    if (hit && hit.kind === 'fuzzy') {
+      // Spelling variant — ask the user
+      showSheet(`
+        <div class="sheet-handle"></div>
+        <div class="sheet-header"><h2>Already on your list?</h2><button class="btn btn--icon" data-action="cancel">✕</button></div>
+        <div class="sheet-body">
+          <p style="font-size:14px;color:var(--color-text-secondary);margin-bottom:20px">
+            "<strong>${escHtml(hit.match)}</strong>" is already on your list.<br>
+            Is "<strong>${escHtml(name)}</strong>" the same thing?
+          </p>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <button class="btn btn--ghost" id="shopFuzzySkip">Yes — don't add again</button>
+            <button class="btn btn--primary" id="shopFuzzyAdd">No — add "${escHtml(name)}" separately</button>
+          </div>
+        </div>`, {});
+      setTimeout(() => {
+        document.getElementById('shopFuzzySkip')?.addEventListener('click', () => {
+          hideSheet(); input.value = '';
+        });
+        document.getElementById('shopFuzzyAdd')?.addEventListener('click', () => {
+          hideSheet();
+          const known = getItemByName(name);
+          // Force-add by calling storeWrite directly, bypassing dedup guard
+          const items = storeRead(STORE_KEYS.shopping) || [];
+          const item = { id: generateId(), name, category: known?.category || null,
+            note: '', completed: false, addedAt: new Date().toISOString() };
+          items.push(item);
+          storeWrite(STORE_KEYS.shopping, items);
+          input.value = '';
+          renderShoppingList();
+        });
+      }, 50);
+      return;
+    }
     const known = getItemByName(name);
     const added = addShoppingItem({ name, category: known?.category || null });
     input.value = '';
