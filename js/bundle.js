@@ -267,11 +267,31 @@ function getShoppingList() { return storeRead(STORE_KEYS.shopping) || []; }
 
 function addShoppingItem(partial) {
   const items = storeRead(STORE_KEYS.shopping) || [];
+  const nameLower = (partial.name || '').toLowerCase().trim();
+  // Never add a duplicate of an active (uncompleted) item
+  if (nameLower && items.find(i => !i.completed && i.name.toLowerCase().trim() === nameLower)) return null;
   const item = { id: generateId(), name: '', category: null, note: '', completed: false,
     addedAt: new Date().toISOString(), ...partial };
   items.push(item);
   storeWrite(STORE_KEYS.shopping, items);
   return item;
+}
+
+// Deduplicate any existing shopping list data in-place (writes back if changed)
+function deduplicateShoppingList() {
+  const items = storeRead(STORE_KEYS.shopping) || [];
+  const seen = new Set();
+  const deduped = items.filter(i => {
+    const key = (i.name || '').toLowerCase().trim() + ':' + (i.completed ? '1' : '0');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (deduped.length < items.length) {
+    storeWrite(STORE_KEYS.shopping, deduped);
+    return true;
+  }
+  return false;
 }
 
 function updateShoppingItem(id, changes) {
@@ -631,9 +651,9 @@ function showAddToShoppingSheet(item) {
     onSave: () => {
       const name = document.getElementById('shopNameInput')?.value.trim();
       if (name) {
-        const dup = getShoppingList().find(i => !i.completed && i.name.toLowerCase() === name.toLowerCase());
-        if (dup) { showToast(`"${dup.name}" is already on your list`); }
-        else { addShoppingItem({ name, category: item.category }); refreshShopping(); showToast('Added to shopping list'); }
+        const added = addShoppingItem({ name, category: item.category });
+        if (added) { refreshShopping(); showToast('Added to shopping list'); }
+        else { showToast(`"${name}" is already on your list`); }
       }
       hideSheet();
     },
@@ -642,9 +662,9 @@ function showAddToShoppingSheet(item) {
     document.getElementById('shopAddConfirm')?.addEventListener('click', () => {
       const name = document.getElementById('shopNameInput')?.value.trim();
       if (name) {
-        const dup = getShoppingList().find(i => !i.completed && i.name.toLowerCase() === name.toLowerCase());
-        if (dup) { showToast(`"${dup.name}" is already on your list`); }
-        else { addShoppingItem({ name, category: item.category }); refreshShopping(); showToast('Added to shopping list'); }
+        const added = addShoppingItem({ name, category: item.category });
+        if (added) { refreshShopping(); showToast('Added to shopping list'); }
+        else { showToast(`"${name}" is already on your list`); }
       }
       hideSheet();
     });
@@ -1090,6 +1110,7 @@ let _shopContainer = null;
 
 function mountShopping(el) {
   _shopContainer = el;
+  deduplicateShoppingList(); // clean up any existing duplicates in stored data
   el.innerHTML = `
     <div class="shopping-add-row">
       <input class="input" id="shopAddInput" type="text" placeholder="Add item…" autocomplete="off">
@@ -1105,16 +1126,10 @@ function mountShopping(el) {
   const doAdd = () => {
     const name = input.value.trim();
     if (!name) return;
-    const nameLower = name.toLowerCase();
-    const existing = getShoppingList().find(i => !i.completed && i.name.toLowerCase() === nameLower);
-    if (existing) {
-      showToast(`"${existing.name}" is already on your list`);
-      input.value = '';
-      return;
-    }
     const known = getItemByName(name);
-    addShoppingItem({ name, category: known?.category || null });
+    const added = addShoppingItem({ name, category: known?.category || null });
     input.value = '';
+    if (!added) { showToast(`"${name}" is already on your list`); return; }
     renderShoppingList();
   };
   el.querySelector('#shopAddBtn').addEventListener('click', doAdd);
