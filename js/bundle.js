@@ -630,14 +630,22 @@ function showAddToShoppingSheet(item) {
     </div>`, {
     onSave: () => {
       const name = document.getElementById('shopNameInput')?.value.trim();
-      if (name) { addShoppingItem({ name, category: item.category }); refreshShopping(); showToast('Added to shopping list'); }
+      if (name) {
+        const dup = getShoppingList().find(i => !i.completed && i.name.toLowerCase() === name.toLowerCase());
+        if (dup) { showToast(`"${dup.name}" is already on your list`); }
+        else { addShoppingItem({ name, category: item.category }); refreshShopping(); showToast('Added to shopping list'); }
+      }
       hideSheet();
     },
   });
   setTimeout(() => {
     document.getElementById('shopAddConfirm')?.addEventListener('click', () => {
       const name = document.getElementById('shopNameInput')?.value.trim();
-      if (name) { addShoppingItem({ name, category: item.category }); refreshShopping(); showToast('Added to shopping list'); }
+      if (name) {
+        const dup = getShoppingList().find(i => !i.completed && i.name.toLowerCase() === name.toLowerCase());
+        if (dup) { showToast(`"${dup.name}" is already on your list`); }
+        else { addShoppingItem({ name, category: item.category }); refreshShopping(); showToast('Added to shopping list'); }
+      }
       hideSheet();
     });
   }, 50);
@@ -1097,6 +1105,13 @@ function mountShopping(el) {
   const doAdd = () => {
     const name = input.value.trim();
     if (!name) return;
+    const nameLower = name.toLowerCase();
+    const existing = getShoppingList().find(i => !i.completed && i.name.toLowerCase() === nameLower);
+    if (existing) {
+      showToast(`"${existing.name}" is already on your list`);
+      input.value = '';
+      return;
+    }
     const known = getItemByName(name);
     addShoppingItem({ name, category: known?.category || null });
     input.value = '';
@@ -1145,7 +1160,8 @@ function renderShoppingList() {
     html += `</div>`;
   });
   // Items with no category
-  const noCat = uncompleted.filter(i => !i.category || !CATEGORIES.includes(i.category));
+  // Only truly unknown categories — null/undefined are already bucketed under 'Other' by groupBy above
+  const noCat = uncompleted.filter(i => i.category && !CATEGORIES.includes(i.category));
   if (noCat.length) {
     html += `<div class="section-header">📦 Other</div><div class="settings-item" style="margin-bottom:8px">`;
     noCat.forEach(item => { html += renderShopItem(item); });
