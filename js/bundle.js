@@ -453,7 +453,7 @@ function showSheet(contentHTML, { onSave, onCancel } = {}) {
   el.classList.add('is-open');
   document.getElementById('sheetBackdrop').classList.add('is-open');
   el.querySelector('[data-action="save"]')?.addEventListener('click', () => { if (_sheetOnSave) _sheetOnSave(); });
-  el.querySelector('[data-action="cancel"]')?.addEventListener('click', () => { hideSheet(); if (onCancel) onCancel(); });
+  el.querySelectorAll('[data-action="cancel"]').forEach(btn => btn.addEventListener('click', () => { hideSheet(); if (onCancel) onCancel(); }));
   setTimeout(() => el.querySelector('input, select, textarea')?.focus(), 340);
 }
 
