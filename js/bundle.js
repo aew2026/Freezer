@@ -25,7 +25,7 @@ const CATEGORY_DEFAULTS_MONTHS = {
 };
 
 // Universal unit list — same options regardless of category
-const ALL_UNITS = ['lbs', 'oz', 'g', 'kg', 'pieces', 'unit', 'servings', 'portions', 'bags', 'cups', 'containers', 'trays', 'Custom…'];
+const ALL_UNITS = ['lbs', 'oz', 'g', 'pieces', 'servings', 'bags', 'cups', 'Custom…'];
 
 // Build <option> tags for a unit select; handles custom values not in the list
 function unitOptsHtml(selected) {
@@ -568,33 +568,45 @@ function refreshHome() {
   const inventory  = getInventory();
   const shopping   = getShoppingList();
   const urgent     = inventory.filter(i => daysUntil(i.useByDate) <= 7).length;
-  const lowStaples = inventory.filter(i => i.staple && i.minQty != null && i.quantity < i.minQty);
 
-  // Summary strip — "Running Low" replaces "In Freezer"
+  // Option A: aggregate quantities across all items with same normalized name for staple minimum check
+  const stapleGroups = {};
+  inventory.filter(i => i.staple).forEach(i => {
+    const key = normalizeName(i.name);
+    if (!stapleGroups[key]) {
+      stapleGroups[key] = { name: i.name, totalQty: 0, minQty: i.minQty, unit: i.unit, firstId: i.id };
+    }
+    stapleGroups[key].totalQty = Math.round((stapleGroups[key].totalQty + (i.quantity || 0)) * 100) / 100;
+  });
+  const lowStapleGroups = Object.values(stapleGroups)
+    .filter(g => g.minQty != null && g.totalQty < g.minQty)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  // Summary strip
   _homeContainer.querySelector('#summaryStrip').innerHTML = `
-    <div class="summary-pill"><div class="summary-pill__val ${lowStaples.length > 0 ? 'has-alert' : ''}">${lowStaples.length}</div><div class="summary-pill__label">Running Low</div></div>
+    <div class="summary-pill"><div class="summary-pill__val ${lowStapleGroups.length > 0 ? 'has-alert' : ''}">${lowStapleGroups.length}</div><div class="summary-pill__label">Running Low</div></div>
     <div class="summary-pill"><div class="summary-pill__val ${urgent > 0 ? 'has-alert' : ''}">${urgent}</div><div class="summary-pill__label">Expiring Soon</div></div>
     <div class="summary-pill"><div class="summary-pill__val">${shopping.filter(i=>!i.completed).length}</div><div class="summary-pill__label">To Buy</div></div>`;
 
-  // ── Staples Running Low ──
+  // ── Staples (running-low only) ──
   const staplesSection = _homeContainer.querySelector('#staplesSection');
-  const staplesCollapsed = !!staplesSection.querySelector('.home-section.is-collapsed');
-  if (lowStaples.length > 0) {
-    let shtml = `<div class="home-section${staplesCollapsed ? ' is-collapsed' : ''}">
-      <div class="home-section__hdr section-header">
-        <span>⭐ Staples Running Low</span>
-        <span class="section-chevron" style="${staplesCollapsed ? 'transform:rotate(-90deg)' : ''}">▾</span>
+  if (lowStapleGroups.length > 0) {
+    let shtml = `<div class="home-section">
+      <div class="home-section__hdr section-header" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none">
+        <span>⭐ Running Low</span>
+        <span class="section-chevron" style="font-size:12px;transition:transform 0.2s">▾</span>
       </div>
       <div class="home-section__body">`;
-    lowStaples.sort((a,b) => a.name.localeCompare(b.name)).forEach((item, i) => {
-      shtml += `<div class="expiry-card animate-slide-up" style="--i:${i}">
+    lowStapleGroups.forEach((g, i) => {
+      const minLabel = ` · min ${g.minQty}`;
+      shtml += `<div class="expiry-card animate-slide-up" style="--i:${i};border-color:var(--color-red)">
         <div class="expiry-card__info">
-          <div class="expiry-card__name">${escHtml(item.name)}</div>
-          <div class="expiry-card__qty">${item.quantity} ${escHtml(item.unit)} · min ${item.minQty}</div>
+          <div class="expiry-card__name">${escHtml(g.name)} <span style="font-size:10px;font-weight:600;background:var(--color-red);color:#fff;padding:1px 5px;border-radius:99px">LOW</span></div>
+          <div class="expiry-card__qty">${g.totalQty} ${escHtml(g.unit)}${minLabel}</div>
         </div>
         <div class="staple-card-actions">
-          <button class="btn btn--icon staple-inc-btn" data-id="${item.id}" title="Add one" style="font-size:18px;width:36px;height:36px">＋</button>
-          <button class="btn btn--ghost staple-shop-btn" data-id="${item.id}" style="font-size:12px;padding:6px 10px;white-space:nowrap">Add to List</button>
+          <button class="btn btn--icon staple-inc-btn" data-id="${g.firstId}" title="Restock" style="font-size:18px;width:36px;height:36px">＋</button>
+          <button class="btn btn--ghost staple-shop-btn" data-id="${g.firstId}" style="font-size:12px;padding:6px 10px;white-space:nowrap">Add to List</button>
         </div>
       </div>`;
     });
@@ -607,7 +619,7 @@ function refreshHome() {
     if (_homeCollapsed.staples) { staplesBody.style.display = 'none'; staplesChevron.style.transform = 'rotate(-90deg)'; }
     staplesSection.querySelector('.home-section__hdr').addEventListener('click', () => {
       _homeCollapsed.staples = !_homeCollapsed.staples;
-      staplesBody.style.display    = _homeCollapsed.staples ? 'none' : '';
+      staplesBody.style.display      = _homeCollapsed.staples ? 'none' : '';
       staplesChevron.style.transform = _homeCollapsed.staples ? 'rotate(-90deg)' : '';
     });
     staplesSection.querySelectorAll('.staple-shop-btn').forEach(btn => {
@@ -620,11 +632,7 @@ function refreshHome() {
       btn.addEventListener('click', () => {
         const item = getInventoryItem(btn.dataset.id);
         if (!item) return;
-        const newQty = Math.round((item.quantity + 1) * 100) / 100;
-        updateInventoryItem(item.id, { quantity: newQty });
-        showToast(`${item.name}: ${newQty} ${item.unit}`);
-        refreshHome();
-        refreshInventory();
+        showRestockSheet(item, () => { refreshHome(); if (_invContainer) refreshInventory(); });
       });
     });
   } else {
@@ -637,10 +645,10 @@ function refreshHome() {
   const expiringCollapsed = !!expiringSection.querySelector('.home-section.is-collapsed');
 
   // Extra gap when both sections are visible
-  expiringSection.style.marginTop = lowStaples.length > 0 ? '24px' : '';
+  expiringSection.style.marginTop = lowStapleGroups.length > 0 ? '24px' : '';
 
   if (expiring.length === 0) {
-    expiringSection.innerHTML = lowStaples.length === 0
+    expiringSection.innerHTML = lowStapleGroups.length === 0
       ? `<div class="empty-state" style="padding:32px 0 16px"><div class="empty-state__icon">✅</div><div class="empty-state__title">Your freezer looks good!</div><div class="empty-state__subtitle">Nothing expiring soon, no staples running low.</div></div>`
       : '';
     return;
@@ -744,11 +752,13 @@ function mountInventory(el) {
       return;
     }
     const star    = e.target.closest('.star-btn');
+    const restock = e.target.closest('.restock-btn');
     const minus   = e.target.closest('.minus-btn');
     const confirm = e.target.closest('[data-action="confirm-used"]');
     const cancel  = e.target.closest('[data-action="cancel-used"]');
     const card    = e.target.closest('.swipe-card__content');
     if (star)    { e.stopPropagation(); const item = getInventoryItem(star.dataset.id); if (item) { updateInventoryItem(item.id, {staple: !item.staple}); renderInventory(); refreshHome(); } return; }
+    if (restock) { e.stopPropagation(); invHandleRestock(restock.dataset.id); return; }
     if (minus)   { e.stopPropagation(); invHandleDecrement(minus.dataset.id); return; }
     if (confirm) { e.stopPropagation(); invHandleUsedItAll(confirm.dataset.id); return; }
     if (cancel)  { e.stopPropagation(); const item = getInventoryItem(cancel.dataset.id); if (item) updateInventoryItem(item.id, {quantity:1}); renderInventory(); return; }
@@ -831,6 +841,7 @@ function renderInvCard(item, index) {
         <div class="swipe-card__right">
           <button class="star-btn" data-id="${item.id}" title="Toggle staple">${item.staple ? '⭐' : '☆'}</button>
           <span class="days-chip ${getExpiryClass(days)}">${getDaysLabel(days)}</span>
+          <button class="restock-btn" data-id="${item.id}" title="Restock">＋</button>
           <button class="minus-btn" data-id="${item.id}">−</button>
         </div>
       </div>
@@ -906,6 +917,41 @@ function invHandleUsedItAll(id) {
     addShoppingItem({ name, category: known?.category || category });
     refreshShopping();
   }});
+}
+
+function showRestockSheet(item, onSaved) {
+  showSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-header"><h2>Restock ${escHtml(item.name)}</h2><button class="btn btn--icon" data-action="cancel">✕</button></div>
+    <div class="sheet-body">
+      <p style="color:var(--color-text-secondary);font-size:13px;margin-bottom:16px">Currently: <strong>${item.quantity} ${escHtml(item.unit)}</strong></p>
+      <div class="form-row"><div class="input-group"><label class="input-label">Amount added</label>
+        <input class="input" id="restockAmt" type="number" min="0.25" step="0.25" value="1" inputmode="decimal" style="text-align:center;font-size:18px">
+      </div></div>
+    </div>
+    <div class="sheet-footer">
+      <button class="btn btn--ghost" style="flex:1" data-action="cancel">Cancel</button>
+      <button class="btn btn--primary" style="flex:2" id="restockSaveBtn">Add to Stock</button>
+    </div>`, {});
+  setTimeout(() => {
+    const inp = document.getElementById('restockAmt');
+    inp?.focus(); inp?.select();
+    document.getElementById('restockSaveBtn')?.addEventListener('click', () => {
+      const amt = parseFloat(document.getElementById('restockAmt')?.value) || 0;
+      if (amt <= 0) return;
+      const newQty = Math.round((item.quantity + amt) * 100) / 100;
+      updateInventoryItem(item.id, { quantity: newQty });
+      hideSheet();
+      showToast(`${item.name}: now ${newQty} ${item.unit}`);
+      if (onSaved) onSaved();
+    });
+  }, 50);
+}
+
+function invHandleRestock(id) {
+  const item = getInventoryItem(id);
+  if (!item) return;
+  showRestockSheet(item, () => { renderInventory(); refreshHome(); });
 }
 
 function openEditSheet(id) {
@@ -985,7 +1031,7 @@ function mountAdd(el) {
       <div style="display:flex;gap:12px;align-items:center">
         <div class="stepper">
           <button type="button" class="stepper__btn" id="addQtyMinus">−</button>
-          <span class="stepper__val" id="addQtyVal">1</span>
+          <input type="number" class="stepper__val" id="addQtyVal" min="0.25" step="0.25" value="1" inputmode="decimal" style="width:52px;text-align:center;border:none;background:transparent;color:inherit;font-size:inherit;font-family:inherit;-moz-appearance:textfield;appearance:textfield">
           <button type="button" class="stepper__btn" id="addQtyPlus">+</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;width:120px">
@@ -1041,12 +1087,16 @@ function mountAdd(el) {
   });
 
   el.querySelector('#addQtyMinus').addEventListener('click', () => {
-    _addQuantity = Math.max(0.5, _addQuantity - 1);
-    el.querySelector('#addQtyVal').textContent = _addQuantity % 1 === 0 ? _addQuantity : _addQuantity.toFixed(1);
+    _addQuantity = Math.max(0.25, Math.round((_addQuantity - 0.25) * 100) / 100);
+    el.querySelector('#addQtyVal').value = _addQuantity;
   });
   el.querySelector('#addQtyPlus').addEventListener('click', () => {
-    _addQuantity += 1;
-    el.querySelector('#addQtyVal').textContent = _addQuantity;
+    _addQuantity = Math.round((_addQuantity + 0.25) * 100) / 100;
+    el.querySelector('#addQtyVal').value = _addQuantity;
+  });
+  el.querySelector('#addQtyVal').addEventListener('change', () => {
+    _addQuantity = Math.max(0.25, parseFloat(el.querySelector('#addQtyVal').value) || 1);
+    el.querySelector('#addQtyVal').value = _addQuantity;
   });
 
   el.querySelector('#addSaveBtn').addEventListener('click', handleAddSave);
@@ -1085,6 +1135,7 @@ function handleAddSave() {
     chips.style.outline='2px solid var(--color-red)'; chips.style.borderRadius='8px';
     setTimeout(()=>{ chips.style.outline=''; },1500); return;
   }
+  _addQuantity = Math.max(0.25, parseFloat(_addContainer.querySelector('#addQtyVal')?.value) || 1);
   const rawUnit    = _addContainer.querySelector('#addUnit')?.value || 'servings';
   const unit       = rawUnit === 'Custom…' ? (_addContainer.querySelector('#addUnitCustom')?.value.trim() || 'unit') : rawUnit;
   const dateFrozen = _addContainer.querySelector('#addDateFrozen').value || today();
@@ -1142,7 +1193,7 @@ function addResetForm() {
   _addContainer.querySelector('#addAutocomplete').hidden = true;
   _addContainer.querySelector('#addDateFrozen').value = today();
   _addQuantity = 1;
-  _addContainer.querySelector('#addQtyVal').textContent = '1';
+  _addContainer.querySelector('#addQtyVal').value = '1';
   _addCategory = null;
   _addContainer.querySelectorAll('#catChips .chip').forEach(c => c.classList.remove('is-selected'));
   _addContainer.querySelector('#addUnit').innerHTML = '';
