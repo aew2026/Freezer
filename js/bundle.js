@@ -751,18 +751,10 @@ function mountInventory(el) {
     <div class="search-wrap">
       <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
       <input class="search-input" id="inventorySearch" type="search" placeholder="Search inventory…" autocomplete="off">
-      <button class="scan-btn" id="invScanBtn" aria-label="Scan barcode">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
-          <line x1="7" y1="7" x2="7" y2="17"/><line x1="10" y1="7" x2="10" y2="17"/>
-          <line x1="13" y1="7" x2="13" y2="17"/><line x1="16" y1="9" x2="16" y2="17"/>
-        </svg>
-      </button>
     </div>
     <div id="inventoryList"></div>`;
   _invListEl = el.querySelector('#inventoryList');
   el.querySelector('#inventorySearch').addEventListener('input', e => { _invSearch = e.target.value.trim().toLowerCase(); renderInventory(); });
-  el.querySelector('#invScanBtn').addEventListener('click', openScannerOverlay);
   _invListEl.addEventListener('click', e => {
     // Section header collapse (handled here in the permanent listener, not per-render)
     const hdr = e.target.closest('.inv-section__hdr');
@@ -1066,7 +1058,16 @@ let _classifyCtrl    = null;
 function mountAdd(el) {
   _addContainer = el;
   el.innerHTML = `
-    <h2 style="font-size:18px;font-weight:600;margin-bottom:20px">Add to Freezer</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h2 style="font-size:18px;font-weight:600">Add to Freezer</h2>
+      <button class="scan-btn" id="addScanBtn" aria-label="Scan barcode">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
+          <line x1="7" y1="7" x2="7" y2="17"/><line x1="10" y1="7" x2="10" y2="17"/>
+          <line x1="13" y1="7" x2="13" y2="17"/><line x1="16" y1="9" x2="16" y2="17"/>
+        </svg>
+      </button>
+    </div>
     <div class="form-row"><div class="input-group"><label class="input-label">Item Name</label>
       <div class="autocomplete-wrap">
         <input class="input" id="addName" type="text" placeholder="e.g. Chicken thighs" autocomplete="off" autocorrect="off">
@@ -1104,6 +1105,8 @@ function mountAdd(el) {
       <input class="input" id="addIntendedFor" type="text" placeholder="e.g. Lasagna, soup night…" autocomplete="off">
     </div></div>
     <div style="margin-top:8px"><button class="btn btn--primary" id="addSaveBtn" type="button">Save to Freezer</button></div>`;
+
+  el.querySelector('#addScanBtn').addEventListener('click', openScannerOverlay);
 
   const nameInput = el.querySelector('#addName');
   const autocomplete = el.querySelector('#addAutocomplete');
