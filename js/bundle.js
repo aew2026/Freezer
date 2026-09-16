@@ -751,10 +751,18 @@ function mountInventory(el) {
     <div class="search-wrap">
       <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
       <input class="search-input" id="inventorySearch" type="search" placeholder="Search inventory…" autocomplete="off">
+      <button class="scan-btn" id="invScanBtn" aria-label="Scan barcode">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
+          <line x1="7" y1="7" x2="7" y2="17"/><line x1="10" y1="7" x2="10" y2="17"/>
+          <line x1="13" y1="7" x2="13" y2="17"/><line x1="16" y1="9" x2="16" y2="17"/>
+        </svg>
+      </button>
     </div>
     <div id="inventoryList"></div>`;
   _invListEl = el.querySelector('#inventoryList');
   el.querySelector('#inventorySearch').addEventListener('input', e => { _invSearch = e.target.value.trim().toLowerCase(); renderInventory(); });
+  el.querySelector('#invScanBtn').addEventListener('click', openScannerOverlay);
   _invListEl.addEventListener('click', e => {
     // Section header collapse (handled here in the permanent listener, not per-render)
     const hdr = e.target.closest('.inv-section__hdr');
@@ -1806,6 +1814,260 @@ document.querySelector('.gear-btn').addEventListener('click', () => {
     initSettings(() => { if (_activeTab) TAB_CONFIG[_activeTab]?.refresh(); });
   } catch(e) { alert('Settings error: ' + e.message); console.error(e); }
 });
+
+// ── Barcode Scanner ───────────────────────────
+
+const SCAN_STOP_WORDS = new Set([
+  'organic','natural','premium','frozen','fresh','farm','harvest',
+  'grade','select','choice','pure','real','original','classic',
+  'traditional','artisan','gourmet','homestyle','whole','raw',
+  'unsalted','salted','sweetened','unsweetened','reduced','light',
+  'lite','extra','family','value','pack','bag','box','can','jar',
+  'bottle','brand','foods','company','inc','llc','corp','co',
+  'the','and','with','for','from','del','the'
+]);
+
+function extractProductWords(name) {
+  return (name || '').toLowerCase()
+    .replace(/\b\d+(\.\d+)?\s*(oz|lb|lbs|g|kg|ml|l|ct|count|pk|pack|fl\.?\s*oz)\b/gi, '')
+    .replace(/[^a-z\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !SCAN_STOP_WORDS.has(w));
+}
+
+function scoreInventoryMatch(productWords, items) {
+  const qSet = new Set(productWords);
+  return items
+    .map(item => {
+      const iWords = item.name.toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(w => w.length > 2);
+      let score = 0;
+      for (const qw of qSet) {
+        for (const iw of iWords) {
+          if (qw === iw) score += 3;
+          else if (iw.startsWith(qw) || qw.startsWith(iw)) score += 1;
+        }
+      }
+      return { item, score };
+    })
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score);
+}
+
+async function lookupUPC(upc) {
+  try {
+    const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(upc)}.json`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.status !== 1 || !data.product) return null;
+    return data.product.product_name_en || data.product.product_name || null;
+  } catch { return null; }
+}
+
+let _scanStream = null;
+let _scanStop   = null;
+
+function setScanStatus(msg) {
+  const el = document.getElementById('scannerStatus');
+  if (el) el.textContent = msg;
+}
+
+function closeScannerOverlay() {
+  const ov = document.getElementById('scannerOverlay');
+  if (ov) ov.classList.remove('is-open');
+  if (_scanStop)   { _scanStop(); _scanStop = null; }
+  if (_scanStream) { _scanStream.getTracks().forEach(t => t.stop()); _scanStream = null; }
+  setTimeout(() => { const el = document.getElementById('scannerOverlay'); if (el) el.remove(); }, 350);
+}
+
+async function handleScannedCode(upc) {
+  setScanStatus('Found — looking up…');
+  const items = getInventory();
+
+  // Fast path: stored UPC on an inventory item
+  const direct = items.find(i => (i.upcs || []).includes(upc));
+  if (direct) {
+    closeScannerOverlay();
+    showRestockSheet(direct, () => { renderInventory(); refreshHome(); });
+    return;
+  }
+
+  const productName = await lookupUPC(upc);
+  closeScannerOverlay();
+
+  if (!productName) {
+    showToast('Product not found — fill in the name');
+    switchTab('add');
+    return;
+  }
+
+  const productWords = extractProductWords(productName);
+  const scored = scoreInventoryMatch(productWords, items);
+  showScanResultSheet(productName, scored, upc);
+}
+
+function showScanResultSheet(productName, scored, upc) {
+  const displayName = productName.length > 52 ? productName.slice(0, 49) + '…' : productName;
+
+  if (scored.length === 0) {
+    const cleaned = extractProductWords(productName).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || displayName;
+    showSheet(`
+      <div class="sheet-handle"></div>
+      <div class="sheet-header"><h2>Not in freezer yet</h2><button class="btn btn--icon" data-action="cancel">✕</button></div>
+      <div class="sheet-body">
+        <p style="color:var(--color-text-secondary);font-size:12px;margin-bottom:10px">Scanned product:</p>
+        <div style="font-size:16px;font-weight:600;margin-bottom:20px">${escHtml(displayName)}</div>
+        <button class="btn btn--primary" id="scanAddNewBtn">Add to Freezer</button>
+      </div>`, {});
+    setTimeout(() => {
+      document.getElementById('scanAddNewBtn')?.addEventListener('click', () => {
+        hideSheet();
+        switchTab('add');
+        setTimeout(() => {
+          const inp = document.getElementById('addName');
+          if (inp) { inp.value = cleaned; inp.dispatchEvent(new Event('input')); }
+        }, 150);
+      });
+    }, 50);
+    return;
+  }
+
+  const top = scored[0];
+  const isHighConfidence = top.score >= 3 && (scored.length === 1 || top.score > (scored[1]?.score ?? 0) * 1.4);
+  if (isHighConfidence) {
+    showScanConfirmSheet(displayName, top.item, scored.slice(1), upc);
+  } else {
+    showScanCandidateSheet(displayName, scored.slice(0, 4), upc);
+  }
+}
+
+function showScanConfirmSheet(displayName, item, otherCandidates, upc) {
+  showSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-header"><h2>Is this it?</h2><button class="btn btn--icon" data-action="cancel">✕</button></div>
+    <div class="sheet-body">
+      <p style="color:var(--color-text-secondary);font-size:12px;margin-bottom:10px">${escHtml(displayName)}</p>
+      <div style="font-size:18px;font-weight:600;margin-bottom:4px">${escHtml(item.name)}</div>
+      <p style="color:var(--color-text-secondary);font-size:13px;margin-bottom:20px">Currently: ${item.quantity} ${escHtml(item.unit)}</p>
+      <div class="form-row"><div class="input-group"><label class="input-label">Amount added</label>
+        <input class="input" id="scanRestockAmt" type="number" min="0.5" step="0.5" value="1" inputmode="decimal" style="text-align:center;font-size:18px">
+      </div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        ${[1,2,3].map(n => `<button class="chip" data-scan-chip="${n}">+${n} ${escHtml(item.unit)}</button>`).join('')}
+      </div>
+    </div>
+    <div class="sheet-footer">
+      ${otherCandidates.length ? `<button class="btn btn--ghost" style="flex:1" id="scanNotThis">Not this</button>` : `<button class="btn btn--ghost" style="flex:1" data-action="cancel">Cancel</button>`}
+      <button class="btn btn--primary" style="flex:2" id="scanRestockBtn">Restock</button>
+    </div>`, {});
+  setTimeout(() => {
+    document.querySelectorAll('[data-scan-chip]').forEach(btn => {
+      btn.addEventListener('click', () => { document.getElementById('scanRestockAmt').value = btn.dataset.scanChip; });
+    });
+    document.getElementById('scanRestockBtn')?.addEventListener('click', () => {
+      const amt = parseFloat(document.getElementById('scanRestockAmt')?.value) || 0;
+      if (amt <= 0) return;
+      const newQty = Math.round((item.quantity + amt) * 100) / 100;
+      const upcs = [...new Set([...(item.upcs || []), upc])];
+      updateInventoryItem(item.id, { quantity: newQty, upcs });
+      hideSheet(); renderInventory(); refreshHome();
+      showToast(`Restocked ${item.name} — now ${newQty} ${item.unit}`);
+    });
+    document.getElementById('scanNotThis')?.addEventListener('click', () => {
+      hideSheet();
+      setTimeout(() => showScanCandidateSheet(displayName, otherCandidates, upc), 80);
+    });
+  }, 50);
+}
+
+function showScanCandidateSheet(displayName, candidates, upc) {
+  showSheet(`
+    <div class="sheet-handle"></div>
+    <div class="sheet-header"><h2>Which item is this?</h2><button class="btn btn--icon" data-action="cancel">✕</button></div>
+    <div class="sheet-body">
+      <p style="color:var(--color-text-secondary);font-size:12px;margin-bottom:14px">${escHtml(displayName)}</p>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
+        ${candidates.map(({ item }) => `
+          <button class="btn btn--ghost" data-scan-pick="${escHtml(item.id)}" style="justify-content:flex-start;text-align:left;padding:12px 14px;gap:0">
+            <span style="flex:1;font-size:15px;font-weight:500">${escHtml(item.name)}</span>
+            <span style="font-size:12px;color:var(--color-text-secondary)">${item.quantity} ${escHtml(item.unit)}</span>
+          </button>`).join('')}
+      </div>
+      <button class="btn btn--ghost" id="scanPickNone" style="width:100%;color:var(--color-text-secondary);font-size:13px">Add as new item instead</button>
+    </div>`, {});
+  setTimeout(() => {
+    document.querySelectorAll('[data-scan-pick]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        hideSheet();
+        const item = getInventoryItem(btn.dataset.scanPick);
+        if (item) setTimeout(() => showScanConfirmSheet(displayName, item, [], upc), 80);
+      });
+    });
+    document.getElementById('scanPickNone')?.addEventListener('click', () => {
+      hideSheet();
+      switchTab('add');
+      setTimeout(() => {
+        const cleaned = extractProductWords(displayName).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        const inp = document.getElementById('addName');
+        if (inp) { inp.value = cleaned; inp.dispatchEvent(new Event('input')); }
+      }, 150);
+    });
+  }, 50);
+}
+
+function openScannerOverlay() {
+  if (!('BarcodeDetector' in window)) {
+    showToast('Scanning needs iOS 17+ or Chrome on Android');
+    return;
+  }
+  let ov = document.getElementById('scannerOverlay');
+  if (ov) ov.remove();
+  ov = document.createElement('div');
+  ov.className = 'scanner-overlay';
+  ov.id = 'scannerOverlay';
+  ov.innerHTML = `
+    <div class="scanner-header">
+      <h2>Scan Barcode</h2>
+      <button class="btn btn--icon" id="scannerClose" style="color:#fff;background:rgba(255,255,255,0.15);border:none">✕</button>
+    </div>
+    <div class="scanner-body">
+      <video class="scanner-video" id="scannerVideo" autoplay playsinline muted></video>
+      <div class="scanner-viewfinder">
+        <div class="viewfinder-corner tl"></div>
+        <div class="viewfinder-corner tr"></div>
+        <div class="viewfinder-corner bl"></div>
+        <div class="viewfinder-corner br"></div>
+        <div class="scanner-line"></div>
+      </div>
+      <p class="scanner-hint">Point at the barcode on the package</p>
+      <div class="scanner-status" id="scannerStatus"></div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#scannerClose').addEventListener('click', closeScannerOverlay);
+  requestAnimationFrame(() => ov.classList.add('is-open'));
+
+  const video = ov.querySelector('#scannerVideo');
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    .then(stream => {
+      _scanStream = stream;
+      video.srcObject = stream;
+      return video.play();
+    })
+    .then(() => {
+      const detector = new BarcodeDetector({ formats: ['upc_a', 'upc_e', 'ean_13', 'ean_8', 'code_128', 'code_39'] });
+      let running = true;
+      _scanStop = () => { running = false; };
+      const tick = async () => {
+        if (!running) return;
+        try {
+          const codes = await detector.detect(video);
+          if (codes.length > 0 && running) { running = false; handleScannedCode(codes[0].rawValue); }
+          else requestAnimationFrame(tick);
+        } catch { requestAnimationFrame(tick); }
+      };
+      requestAnimationFrame(tick);
+    })
+    .catch(() => setScanStatus('Camera access denied'));
+}
 
 // ── Boot ──────────────────────────────────────
 function applyTheme(theme) {
