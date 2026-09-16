@@ -1585,7 +1585,7 @@ function initSettings(onClose) {
           <div class="settings-row">
             <div><div class="settings-row__label">Theme</div></div>
             <div style="display:flex;gap:6px">
-              ${['system','light','dark'].map(t => `<button class="btn btn--ghost" data-theme-btn="${t}" style="font-size:12px;padding:6px 12px;${currentTheme===t?'background:var(--color-accent-dim);border-color:var(--color-accent);color:var(--color-accent)':''}">${t.charAt(0).toUpperCase()+t.slice(1)}</button>`).join('')}
+              ${['system','light','dark'].map(t => `<button class="btn btn--ghost" data-theme-btn="${t}" style="font-size:12px;padding:6px 12px;${currentTheme===t?'background:var(--color-accent);border-color:var(--color-accent);color:#fff':''}">${t.charAt(0).toUpperCase()+t.slice(1)}</button>`).join('')}
             </div>
           </div>
         </div>
@@ -1790,9 +1790,13 @@ document.querySelector('.gear-btn').addEventListener('click', () => {
 // ── Boot ──────────────────────────────────────
 function applyTheme(theme) {
   const root = document.documentElement;
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   if (theme === 'light') { root.dataset.theme = 'light'; }
   else if (theme === 'dark') { root.dataset.theme = 'dark'; }
   else { delete root.dataset.theme; }
+  const isLight = theme === 'light' || (theme !== 'dark' && !prefersDark);
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme) metaTheme.content = isLight ? '#f2f5f9' : '#0d1117';
 }
 
 initStore();
