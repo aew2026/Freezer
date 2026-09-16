@@ -1166,13 +1166,25 @@ function addPopulateAutocomplete(val) {
   if (!val) { list.hidden = true; return; }
   const q = val.toLowerCase();
   const items = getItemList();
-  // Tier 1: name starts with query
-  const t1 = items.filter(i => i.name.toLowerCase().startsWith(q));
-  // Tier 2: any word in the name starts with query (e.g. "blueberries" → "wild blueberries")
-  const t2 = items.filter(i => !t1.includes(i) && i.name.toLowerCase().split(/\s+/).some(w => w.startsWith(q)));
-  // Tier 3: name contains query anywhere
-  const t3 = items.filter(i => !t1.includes(i) && !t2.includes(i) && i.name.toLowerCase().includes(q));
-  const matches = [...t1, ...t2, ...t3].slice(0, 8);
+  const qNorm = normalizeName(q);
+  const seen = new Set();
+  const rank = (i) => {
+    const name = i.name.toLowerCase();
+    const words = name.split(/\s+/);
+    const nameNorm = normalizeName(i.name);
+    if (name.startsWith(q)) return 1;
+    if (words.some(w => w.startsWith(q))) return 2;
+    if (name.includes(q)) return 3;
+    // Tier 4: typo tolerance — any word within edit distance of query (min length 4)
+    if (q.length >= 4 && words.some(w => editDistance(normalizeName(w), qNorm) <= Math.floor(q.length / 4))) return 4;
+    return 0;
+  };
+  const matches = items
+    .map(i => ({ i, r: rank(i) }))
+    .filter(({ r }) => r > 0)
+    .sort((a, b) => a.r - b.r)
+    .slice(0, 8)
+    .map(({ i }) => i);
   if (!matches.length) { list.hidden = true; return; }
   list.innerHTML = matches.map(i => `<li class="autocomplete-item" data-name="${escHtml(i.name)}" data-cat="${escHtml(i.category||'')}"><span>${escHtml(i.name)}</span><span class="autocomplete-item__badge">${i.category||''}</span></li>`).join('');
   list.hidden = false;
