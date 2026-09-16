@@ -1164,7 +1164,15 @@ function refreshAdd() {}
 function addPopulateAutocomplete(val) {
   const list = _addContainer.querySelector('#addAutocomplete');
   if (!val) { list.hidden = true; return; }
-  const matches = getItemList().filter(i => i.name.toLowerCase().startsWith(val.toLowerCase())).slice(0, 8);
+  const q = val.toLowerCase();
+  const items = getItemList();
+  // Tier 1: name starts with query
+  const t1 = items.filter(i => i.name.toLowerCase().startsWith(q));
+  // Tier 2: any word in the name starts with query (e.g. "blueberries" → "wild blueberries")
+  const t2 = items.filter(i => !t1.includes(i) && i.name.toLowerCase().split(/\s+/).some(w => w.startsWith(q)));
+  // Tier 3: name contains query anywhere
+  const t3 = items.filter(i => !t1.includes(i) && !t2.includes(i) && i.name.toLowerCase().includes(q));
+  const matches = [...t1, ...t2, ...t3].slice(0, 8);
   if (!matches.length) { list.hidden = true; return; }
   list.innerHTML = matches.map(i => `<li class="autocomplete-item" data-name="${escHtml(i.name)}" data-cat="${escHtml(i.category||'')}"><span>${escHtml(i.name)}</span><span class="autocomplete-item__badge">${i.category||''}</span></li>`).join('');
   list.hidden = false;
