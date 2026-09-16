@@ -583,11 +583,14 @@ function refreshHome() {
     .filter(g => g.minQty != null && g.totalQty < g.minQty)
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  // Summary strip
+  // Summary strip — tappable shortcuts
   _homeContainer.querySelector('#summaryStrip').innerHTML = `
-    <div class="summary-pill"><div class="summary-pill__val ${lowStapleGroups.length > 0 ? 'has-alert' : ''}">${lowStapleGroups.length}</div><div class="summary-pill__label">Running Low</div></div>
-    <div class="summary-pill"><div class="summary-pill__val ${urgent > 0 ? 'has-alert' : ''}">${urgent}</div><div class="summary-pill__label">Expiring Soon</div></div>
-    <div class="summary-pill"><div class="summary-pill__val">${shopping.filter(i=>!i.completed).length}</div><div class="summary-pill__label">To Buy</div></div>`;
+    <button class="summary-pill" data-pill-nav="inventory"><div class="summary-pill__val ${lowStapleGroups.length > 0 ? 'has-alert' : ''}">${lowStapleGroups.length}</div><div class="summary-pill__label">Running Low</div></button>
+    <button class="summary-pill" data-pill-nav="meals"><div class="summary-pill__val ${urgent > 0 ? 'has-alert' : ''}">${urgent}</div><div class="summary-pill__label">Expiring Soon</div></button>
+    <button class="summary-pill" data-pill-nav="shopping"><div class="summary-pill__val">${shopping.filter(i=>!i.completed).length}</div><div class="summary-pill__label">To Buy</div></button>`;
+  _homeContainer.querySelectorAll('[data-pill-nav]').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.pillNav));
+  });
 
   // ── Sync banner ──
   const syncBanner = _homeContainer.querySelector('#syncBanner');
@@ -861,7 +864,6 @@ function renderInvCard(item, index) {
       </div>
       <div class="swipe-card__content" data-id="${item.id}">
         <div class="swipe-card__main">
-          <div class="swipe-card__meta" style="margin-bottom:6px"><span class="badge ${CATEGORY_BADGE_CLASS[item.category]||'badge--other'}">${item.category}</span></div>
           <div class="swipe-card__name">${escHtml(item.name)}</div>
           ${item.intendedFor ? `<div style="font-size:12px;color:var(--color-accent);margin-top:2px">🍽️ ${escHtml(item.intendedFor)}</div>` : ''}
           <div class="swipe-card__meta">
@@ -1089,7 +1091,7 @@ function mountAdd(el) {
         <div class="input-group"><label class="input-label">Use By</label><input class="input" id="addUseBy" type="date"></div>
       </div>
     </div>
-    <div class="form-row"><div class="input-group" style="flex-direction:row;align-items:center;justify-content:space-between"><label class="input-label" style="margin:0">Staple item</label><input type="checkbox" id="addStaple" style="width:20px;height:20px;accent-color:var(--color-accent)"></div></div>
+    <div class="form-row"><div class="input-group" style="flex-direction:row;align-items:center;justify-content:space-between"><div><label class="input-label" style="margin:0">Staple item</label><div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px;font-weight:400;text-transform:none;letter-spacing:0">Tracks minimum stock on home</div></div><input type="checkbox" id="addStaple" style="width:22px;height:22px;accent-color:var(--color-accent);flex-shrink:0"></div></div>
     <div class="form-row"><div class="input-group"><label class="input-label">Intended for <span style="font-weight:400;color:var(--color-text-secondary)">(optional)</span></label>
       <input class="input" id="addIntendedFor" type="text" placeholder="e.g. Lasagna, soup night…" autocomplete="off">
     </div></div>
@@ -1341,12 +1343,28 @@ function mountShopping(el) {
   });
   list.addEventListener('click', e => {
     const del = e.target.closest('.shopping-item__delete');
-    if (del) { removeShoppingItem(del.dataset.id); renderShoppingList(); }
+    if (del) { removeShoppingItem(del.dataset.id); renderShoppingList(); return; }
+    // Tap note text or "+ note" to edit inline
+    const noteEl = e.target.closest('.shopping-item__note-text, .shopping-item__note-add');
+    if (noteEl) {
+      const id = noteEl.dataset.id;
+      const item = getShoppingList().find(i => i.id === id);
+      if (!item) return;
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'shopping-item__note';
+      inp.value = item.note || '';
+      inp.placeholder = 'Add note…';
+      inp.dataset.id = id;
+      noteEl.replaceWith(inp);
+      inp.focus();
+      inp.addEventListener('blur', () => {
+        updateShoppingItem(id, { note: inp.value.trim() });
+        renderShoppingList();
+      });
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') inp.blur(); });
+    }
   });
-  list.addEventListener('blur', e => {
-    const note = e.target.closest('.shopping-item__note');
-    if (note) updateShoppingItem(note.dataset.id, { note: note.value });
-  }, true);
   renderShoppingList();
 }
 
@@ -1388,11 +1406,14 @@ function renderShoppingList() {
 }
 
 function renderShopItem(item) {
+  const noteHtml = item.note
+    ? `<div class="shopping-item__note-text" data-id="${item.id}">${escHtml(item.note)}</div>`
+    : `<div class="shopping-item__note-add" data-id="${item.id}" style="font-size:12px;color:var(--color-border);margin-top:2px;cursor:pointer">+ note</div>`;
   return `<div class="shopping-item ${item.completed?'is-completed':''}" data-id="${item.id}">
     <input type="checkbox" class="shopping-checkbox" data-id="${item.id}" ${item.completed?'checked':''}>
     <div style="flex:1;min-width:0">
       <div class="shopping-item__name">${escHtml(item.name)}</div>
-      <input type="text" class="shopping-item__note" data-id="${item.id}" value="${escHtml(item.note||'')}" placeholder="Add note…">
+      ${noteHtml}
     </div>
     <button class="shopping-item__delete" data-id="${item.id}">✕</button>
   </div>`;
@@ -1470,7 +1491,7 @@ function renderPlan() {
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <span class="days-chip ${getExpiryClass(days)}">${getDaysLabel(days)}</span>
-          <button class="btn btn--ghost" style="font-size:12px;padding:6px 10px" data-plan-used="${item.id}">Used</button>
+          <button class="btn btn--primary" style="font-size:13px;padding:8px 14px;width:auto;border-radius:8px" data-plan-used="${item.id}">Used it</button>
         </div>
       </div>`;
     });
@@ -1549,6 +1570,8 @@ function initSettings(onClose) {
       </div>`;
   }
 
+  const currentTheme = settings.theme || 'system';
+
   overlay.innerHTML = `
     <div class="settings-header">
       <h1>Settings</h1>
@@ -1556,6 +1579,17 @@ function initSettings(onClose) {
     </div>
     <div class="settings-body">
       ${authBlock}
+      <div class="settings-section">
+        <h2>Appearance</h2>
+        <div class="settings-item">
+          <div class="settings-row">
+            <div><div class="settings-row__label">Theme</div></div>
+            <div style="display:flex;gap:6px">
+              ${['system','light','dark'].map(t => `<button class="btn btn--ghost" data-theme-btn="${t}" style="font-size:12px;padding:6px 12px;${currentTheme===t?'background:var(--color-accent-dim);border-color:var(--color-accent);color:var(--color-accent)':''}">${t.charAt(0).toUpperCase()+t.slice(1)}</button>`).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="settings-section">
         <h2>Anthropic API Key</h2>
         <div class="settings-item">
@@ -1623,6 +1657,15 @@ function initSettings(onClose) {
   });
 
   overlay.querySelector('#settingsClose').addEventListener('click', () => { overlay.classList.remove('is-open'); if (onClose) onClose(); });
+
+  overlay.querySelectorAll('[data-theme-btn]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const t = btn.dataset.themeBtn;
+      saveSettings({ theme: t });
+      applyTheme(t);
+      initSettings(onClose);
+    });
+  });
 
   const apiInput  = overlay.querySelector('#apiKeyInput');
   const apiToggle = overlay.querySelector('#apiKeyToggle');
@@ -1745,7 +1788,15 @@ document.querySelector('.gear-btn').addEventListener('click', () => {
 });
 
 // ── Boot ──────────────────────────────────────
+function applyTheme(theme) {
+  const root = document.documentElement;
+  if (theme === 'light') { root.dataset.theme = 'light'; }
+  else if (theme === 'dark') { root.dataset.theme = 'dark'; }
+  else { delete root.dataset.theme; }
+}
+
 initStore();
+applyTheme(getSettings().theme || 'system');
 switchTab('home');
 
 // ── Firebase Sync ─────────────────────────────
