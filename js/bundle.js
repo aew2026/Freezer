@@ -558,6 +558,7 @@ function mountHome(el) {
   _homeContainer = el;
   el.innerHTML = `
     <div id="summaryStrip" class="summary-strip"></div>
+    <div id="syncBanner"></div>
     <div id="staplesSection"></div>
     <div id="expiringSection"></div>`;
   refreshHome();
@@ -587,6 +588,20 @@ function refreshHome() {
     <div class="summary-pill"><div class="summary-pill__val ${lowStapleGroups.length > 0 ? 'has-alert' : ''}">${lowStapleGroups.length}</div><div class="summary-pill__label">Running Low</div></div>
     <div class="summary-pill"><div class="summary-pill__val ${urgent > 0 ? 'has-alert' : ''}">${urgent}</div><div class="summary-pill__label">Expiring Soon</div></div>
     <div class="summary-pill"><div class="summary-pill__val">${shopping.filter(i=>!i.completed).length}</div><div class="summary-pill__label">To Buy</div></div>`;
+
+  // ── Sync banner ──
+  const syncBanner = _homeContainer.querySelector('#syncBanner');
+  if (syncBanner) {
+    if (_auth && !_fbUser) {
+      syncBanner.innerHTML = `<div style="background:var(--color-surface-2);border:1px solid var(--color-border);border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;font-size:13px">
+        <span style="color:var(--color-text-secondary)">⚠ Not signed in — changes won't sync</span>
+        <button class="btn btn--ghost" id="homeSyncBtn" style="font-size:12px;padding:4px 10px;flex-shrink:0;margin-left:10px">Sign in</button>
+      </div>`;
+      syncBanner.querySelector('#homeSyncBtn').addEventListener('click', () => initSettings(() => refreshAllTabs()));
+    } else {
+      syncBanner.innerHTML = '';
+    }
+  }
 
   // ── Staples (running-low only) ──
   const staplesSection = _homeContainer.querySelector('#staplesSection');
@@ -769,6 +784,21 @@ function mountInventory(el) {
 
 function refreshInventory() { renderInventory(); }
 
+function maybeShowSwipeHint() {
+  try { if (localStorage.getItem('ft_swipe_hinted')) return; } catch(e) { return; }
+  const firstContent = _invListEl?.querySelector('.swipe-card__content');
+  if (!firstContent) return;
+  try { localStorage.setItem('ft_swipe_hinted', '1'); } catch(e) {}
+  setTimeout(() => {
+    firstContent.style.transition = 'transform 0.45s ease';
+    firstContent.style.transform  = 'translateX(-72px)';
+    setTimeout(() => {
+      firstContent.style.transform = 'translateX(0)';
+      setTimeout(() => { firstContent.style.transition = ''; }, 450);
+    }, 650);
+  }, 900);
+}
+
 function renderInventory() {
   if (!_invListEl) return;
   const all      = getInventory();
@@ -818,6 +848,7 @@ function renderInventory() {
     const id = cardEl.dataset.id;
     initSwipeReveal(cardEl, { onUsedItAll: () => invHandleUsedItAll(id), onDelete: () => { removeInventoryItem(id); renderInventory(); } });
   });
+  maybeShowSwipeHint();
 }
 
 function renderInvCard(item, index) {
@@ -853,10 +884,12 @@ function invHandleDecrement(id) {
   if (!item) return;
   // Show a "Use amount" sheet so the user can use full or fractional quantities
   const q = item.quantity;
-  const half = Math.round(q / 2 * 4) / 4;   // nearest 0.25
+  const half      = Math.round(q / 2 * 4) / 4;
+  const three_q   = Math.round(q * 0.75 * 4) / 4;
   const chips = [
-    q >= 0.5 && half > 0 && half < q ? { label: `½ (${half})`, val: half } : null,
-    q >= 1                             ? { label: `1 ${item.unit}`, val: 1 } : null,
+    q > 0.5 && half > 0 && half < q                                  ? { label: `½ (${half})`, val: half }      : null,
+    q > 0.5 && three_q > 0 && three_q < q && three_q !== half        ? { label: `¾ (${three_q})`, val: three_q } : null,
+    q >= 1                                                             ? { label: `1 ${item.unit}`, val: 1 }      : null,
     { label: 'All', val: q },
   ].filter(Boolean);
 
@@ -926,8 +959,11 @@ function showRestockSheet(item, onSaved) {
     <div class="sheet-body">
       <p style="color:var(--color-text-secondary);font-size:13px;margin-bottom:16px">Currently: <strong>${item.quantity} ${escHtml(item.unit)}</strong></p>
       <div class="form-row"><div class="input-group"><label class="input-label">Amount added</label>
-        <input class="input" id="restockAmt" type="number" min="0.25" step="0.25" value="1" inputmode="decimal" style="text-align:center;font-size:18px">
+        <input class="input" id="restockAmt" type="number" min="1" step="1" value="1" inputmode="numeric" style="text-align:center;font-size:18px">
       </div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        ${[1,2,3].map(n => `<button class="chip" data-restock-chip="${n}">+${n} ${escHtml(item.unit)}</button>`).join('')}
+      </div>
     </div>
     <div class="sheet-footer">
       <button class="btn btn--ghost" style="flex:1" data-action="cancel">Cancel</button>
@@ -936,6 +972,9 @@ function showRestockSheet(item, onSaved) {
   setTimeout(() => {
     const inp = document.getElementById('restockAmt');
     inp?.focus(); inp?.select();
+    document.querySelectorAll('[data-restock-chip]').forEach(btn => {
+      btn.addEventListener('click', () => { document.getElementById('restockAmt').value = btn.dataset.restockChip; });
+    });
     document.getElementById('restockSaveBtn')?.addEventListener('click', () => {
       const amt = parseFloat(document.getElementById('restockAmt')?.value) || 0;
       if (amt <= 0) return;
@@ -1039,9 +1078,16 @@ function mountAdd(el) {
           <input class="input" id="addUnitCustom" type="text" placeholder="e.g. tray, bunch" style="display:none">
         </div>
       </div></div>
-    <div class="form-row form-row--inline">
-      <div class="input-group"><label class="input-label">Date Frozen</label><input class="input" id="addDateFrozen" type="date"></div>
-      <div class="input-group"><label class="input-label">Use By</label><input class="input" id="addUseBy" type="date"></div>
+    <div class="form-row" style="margin-bottom:0">
+      <button type="button" id="addDatesToggle" style="background:none;border:none;padding:0;cursor:pointer;display:flex;align-items:center;gap:6px;color:var(--color-text-secondary);font-size:13px;user-select:none">
+        <span id="addDatesChevron" style="font-size:11px;transition:transform 0.2s">▸</span> Dates
+      </button>
+    </div>
+    <div id="addDatesBody" style="display:none">
+      <div class="form-row form-row--inline" style="margin-top:8px">
+        <div class="input-group"><label class="input-label">Date Frozen</label><input class="input" id="addDateFrozen" type="date"></div>
+        <div class="input-group"><label class="input-label">Use By</label><input class="input" id="addUseBy" type="date"></div>
+      </div>
     </div>
     <div class="form-row"><div class="input-group" style="flex-direction:row;align-items:center;justify-content:space-between"><label class="input-label" style="margin:0">Staple item</label><input type="checkbox" id="addStaple" style="width:20px;height:20px;accent-color:var(--color-accent)"></div></div>
     <div class="form-row"><div class="input-group"><label class="input-label">Intended for <span style="font-weight:400;color:var(--color-text-secondary)">(optional)</span></label>
@@ -1087,16 +1133,24 @@ function mountAdd(el) {
   });
 
   el.querySelector('#addQtyMinus').addEventListener('click', () => {
-    _addQuantity = Math.max(0.25, Math.round((_addQuantity - 0.25) * 100) / 100);
+    _addQuantity = Math.max(1, _addQuantity - 1);
     el.querySelector('#addQtyVal').value = _addQuantity;
   });
   el.querySelector('#addQtyPlus').addEventListener('click', () => {
-    _addQuantity = Math.round((_addQuantity + 0.25) * 100) / 100;
+    _addQuantity = _addQuantity + 1;
     el.querySelector('#addQtyVal').value = _addQuantity;
   });
   el.querySelector('#addQtyVal').addEventListener('change', () => {
     _addQuantity = Math.max(0.25, parseFloat(el.querySelector('#addQtyVal').value) || 1);
     el.querySelector('#addQtyVal').value = _addQuantity;
+  });
+
+  el.querySelector('#addDatesToggle').addEventListener('click', () => {
+    const body    = el.querySelector('#addDatesBody');
+    const chevron = el.querySelector('#addDatesChevron');
+    const open    = body.style.display === 'none';
+    body.style.display    = open ? '' : 'none';
+    chevron.style.transform = open ? 'rotate(90deg)' : '';
   });
 
   el.querySelector('#addSaveBtn').addEventListener('click', handleAddSave);
