@@ -2017,11 +2017,7 @@ function showScanCandidateSheet(displayName, candidates, upc) {
   }, 50);
 }
 
-function openScannerOverlay() {
-  if (!('BarcodeDetector' in window)) {
-    showToast('Scanning needs iOS 17+ or Chrome on Android');
-    return;
-  }
+function _buildScannerOverlay() {
   let ov = document.getElementById('scannerOverlay');
   if (ov) ov.remove();
   ov = document.createElement('div');
@@ -2047,14 +2043,12 @@ function openScannerOverlay() {
   document.body.appendChild(ov);
   ov.querySelector('#scannerClose').addEventListener('click', closeScannerOverlay);
   requestAnimationFrame(() => ov.classList.add('is-open'));
+  return ov.querySelector('#scannerVideo');
+}
 
-  const video = ov.querySelector('#scannerVideo');
+function _startNativeScan(video) {
   navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-    .then(stream => {
-      _scanStream = stream;
-      video.srcObject = stream;
-      return video.play();
-    })
+    .then(stream => { _scanStream = stream; video.srcObject = stream; return video.play(); })
     .then(() => {
       const detector = new BarcodeDetector({ formats: ['upc_a', 'upc_e', 'ean_13', 'ean_8', 'code_128', 'code_39'] });
       let running = true;
@@ -2070,6 +2064,35 @@ function openScannerOverlay() {
       requestAnimationFrame(tick);
     })
     .catch(() => setScanStatus('Camera access denied'));
+}
+
+function _startZXingScan(video) {
+  setScanStatus('Loading scanner…');
+  const script = document.createElement('script');
+  script.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js';
+  script.onload = () => {
+    setScanStatus('');
+    const reader = new ZXing.BrowserMultiFormatReader();
+    _scanStop = () => { try { reader.reset(); } catch {} };
+    reader.decodeFromVideoDevice(null, video, (result, err) => {
+      if (result) { _scanStop = null; reader.reset(); handleScannedCode(result.text); }
+    });
+  };
+  script.onerror = () => setScanStatus('Camera not available');
+  document.head.appendChild(script);
+}
+
+function openScannerOverlay() {
+  const inCheck = 'BarcodeDetector' in window;
+  const typeofCheck = typeof BarcodeDetector !== 'undefined';
+  showToast(`BD: in=${inCheck} typeof=${typeofCheck}`, { duration: 8000 });
+  return;
+  const video = _buildScannerOverlay();
+  if ('BarcodeDetector' in window) {
+    _startNativeScan(video);
+  } else {
+    _startZXingScan(video);
+  }
 }
 
 // ── Boot ──────────────────────────────────────

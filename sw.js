@@ -1,4 +1,4 @@
-const CACHE_NAME = 'frosttrack-v16';
+const CACHE_NAME = 'frosttrack-v18';
 
 // Rarely-changing assets safe to pre-cache on install
 const STATIC_SHELL = [
