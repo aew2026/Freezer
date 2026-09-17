@@ -173,8 +173,20 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
+}
+
+.swipe-card__right-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.swipe-card__right-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* ── Minus Button ── */

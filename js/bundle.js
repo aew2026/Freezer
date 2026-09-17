@@ -872,10 +872,14 @@ function renderInvCard(item, index) {
           </div>
         </div>
         <div class="swipe-card__right">
-          <button class="star-btn" data-id="${item.id}" title="Toggle staple">${item.staple ? '⭐' : '☆'}</button>
-          <span class="days-chip ${getExpiryClass(days)}">${getDaysLabel(days)}</span>
-          <button class="restock-btn" data-id="${item.id}" title="Restock">＋</button>
-          <button class="minus-btn" data-id="${item.id}">−</button>
+          <div class="swipe-card__right-top">
+            <button class="star-btn" data-id="${item.id}" title="Toggle staple">${item.staple ? '⭐' : '☆'}</button>
+            <span class="days-chip ${getExpiryClass(days)}">${getDaysLabel(days)}</span>
+          </div>
+          <div class="swipe-card__right-btns">
+            <button class="restock-btn" data-id="${item.id}" title="Restock">＋</button>
+            <button class="minus-btn" data-id="${item.id}">−</button>
+          </div>
         </div>
       </div>
     </div>`;
