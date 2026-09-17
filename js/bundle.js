@@ -2083,12 +2083,8 @@ function _startZXingScan(video) {
 }
 
 function openScannerOverlay() {
-  const inCheck = 'BarcodeDetector' in window;
-  const typeofCheck = typeof BarcodeDetector !== 'undefined';
-  showToast(`BD: in=${inCheck} typeof=${typeofCheck}`, { duration: 8000 });
-  return;
   const video = _buildScannerOverlay();
-  if ('BarcodeDetector' in window) {
+  if (typeof BarcodeDetector !== 'undefined') {
     _startNativeScan(video);
   } else {
     _startZXingScan(video);
