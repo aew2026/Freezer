@@ -270,7 +270,7 @@ function initStore() {
 
 function getInventory() {
   const items = storeRead(STORE_KEYS.inventory) || [];
-  return [...items].sort((a, b) => {
+  return [...items].map(i => normalizeBatches({ ...i })).sort((a, b) => {
     if (!a.useByDate) return 1;
     if (!b.useByDate) return -1;
     return a.useByDate.localeCompare(b.useByDate);
@@ -279,9 +279,11 @@ function getInventory() {
 
 function addInventoryItem(partial) {
   const items = storeRead(STORE_KEYS.inventory) || [];
-  const item = { id: generateId(), name: '', category: 'Other', quantity: 1, unit: 'servings',
+  const base = { id: generateId(), name: '', category: 'Other', quantity: 1, unit: 'servings',
     staple: false, minQty: null, intendedFor: '',
-    dateFrozen: today(), useByDate: '', addedAt: new Date().toISOString(), ...partial };
+    dateFrozen: today(), useByDate: '', addedAt: new Date().toISOString() };
+  const item = { ...base, ...partial };
+  item.batches = [{ qty: item.quantity, dateFrozen: item.dateFrozen, useByDate: item.useByDate }];
   items.push(item);
   storeWrite(STORE_KEYS.inventory, items);
   return item;
@@ -302,6 +304,55 @@ function removeInventoryItem(id) {
 
 function getInventoryItem(id) {
   return (storeRead(STORE_KEYS.inventory) || []).find(i => i.id === id) || null;
+}
+
+function normalizeBatches(item) {
+  if (!Array.isArray(item.batches)) {
+    item.batches = [{ qty: item.quantity || 1, dateFrozen: item.dateFrozen || today(), useByDate: item.useByDate || '' }];
+  }
+  item.batches = item.batches.filter(b => b.qty > 0);
+  item.batches.sort((a, b) => (a.useByDate || '9999').localeCompare(b.useByDate || '9999'));
+  item.quantity = Math.round(item.batches.reduce((s, b) => s + b.qty, 0) * 100) / 100;
+  item.useByDate = item.batches.length > 0 ? item.batches[0].useByDate : '';
+  item.dateFrozen = item.batches.length > 0 ? item.batches[0].dateFrozen : '';
+  return item;
+}
+
+function addBatch(id, qty, dateFrozen, useByDate, extraChanges = {}) {
+  const items = storeRead(STORE_KEYS.inventory) || [];
+  const idx = items.findIndex(i => i.id === id);
+  if (idx === -1) return;
+  const item = items[idx];
+  if (!Array.isArray(item.batches)) {
+    item.batches = [{ qty: item.quantity || 0, dateFrozen: item.dateFrozen || today(), useByDate: item.useByDate || '' }];
+  }
+  item.batches.push({ qty, dateFrozen: dateFrozen || today(), useByDate: useByDate || '' });
+  Object.assign(item, extraChanges);
+  storeWrite(STORE_KEYS.inventory, items);
+}
+
+function consumeBatches(id, amount) {
+  const items = storeRead(STORE_KEYS.inventory) || [];
+  const idx = items.findIndex(i => i.id === id);
+  if (idx === -1) return 0;
+  const item = items[idx];
+  if (!Array.isArray(item.batches)) {
+    item.batches = [{ qty: item.quantity || 0, dateFrozen: item.dateFrozen || today(), useByDate: item.useByDate || '' }];
+  }
+  item.batches.sort((a, b) => (a.useByDate || '9999').localeCompare(b.useByDate || '9999'));
+  let rem = amount;
+  while (rem > 0.001 && item.batches.length > 0) {
+    if (item.batches[0].qty <= rem + 0.001) {
+      rem = Math.round((rem - item.batches[0].qty) * 100) / 100;
+      item.batches.shift();
+    } else {
+      item.batches[0].qty = Math.round((item.batches[0].qty - rem) * 100) / 100;
+      rem = 0;
+    }
+  }
+  const total = Math.round(item.batches.reduce((s, b) => s + b.qty, 0) * 100) / 100;
+  storeWrite(STORE_KEYS.inventory, items);
+  return total;
 }
 
 function getShoppingList() { return storeRead(STORE_KEYS.shopping) || []; }
@@ -886,8 +937,9 @@ function renderInvCard(item, index) {
 }
 
 function invHandleDecrement(id) {
-  const item = getInventoryItem(id);
-  if (!item) return;
+  const raw = getInventoryItem(id);
+  if (!raw) return;
+  const item = normalizeBatches({ ...raw });
   // Show a "Use amount" sheet so the user can use full or fractional quantities
   const q = item.quantity;
   const half      = Math.round(q / 2 * 4) / 4;
@@ -918,12 +970,11 @@ function invHandleDecrement(id) {
     onSave: () => {
       const amt = parseFloat(document.getElementById('useAmt')?.value) || 0;
       if (amt <= 0) { hideSheet(); return; }
-      const remaining = Math.max(0, Math.round((q - amt) * 100) / 100);
+      const remaining = consumeBatches(id, amt);
       if (remaining <= 0) {
         hideSheet();
         invHandleUsedItAll(id);
       } else {
-        updateInventoryItem(id, { quantity: remaining });
         hideSheet();
         renderInventory();
       }
@@ -937,16 +988,17 @@ function invHandleDecrement(id) {
     // Wire save button
     document.getElementById('useConfirmBtn')?.addEventListener('click', () => {
       const amt = parseFloat(document.getElementById('useAmt')?.value) || 0;
-      const remaining = Math.max(0, Math.round((q - amt) * 100) / 100);
+      const remaining = consumeBatches(id, amt);
       hideSheet();
-      if (remaining <= 0) { invHandleUsedItAll(id); } else { updateInventoryItem(id, { quantity: remaining }); renderInventory(); }
+      if (remaining <= 0) { invHandleUsedItAll(id); } else { renderInventory(); }
     });
   }, 50);
 }
 
 function invHandleUsedItAll(id) {
-  const item = getInventoryItem(id);
-  if (!item) return;
+  const raw = getInventoryItem(id);
+  if (!raw) return;
+  const item = normalizeBatches({ ...raw });
   const { name, category, quantity, unit } = item;
   appendUseLog({ name, category, quantity, unit });
   removeInventoryItem(id);
@@ -959,17 +1011,23 @@ function invHandleUsedItAll(id) {
 }
 
 function showRestockSheet(item, onSaved) {
+  const defMonths = (getSettings().categoryDefaults?.[item.category] || CATEGORY_DEFAULTS_MONTHS[item.category] || 3);
+  const defaultUseBy = addMonths(today(), defMonths);
+  const batchNote = item.batches && item.batches.length > 1 ? ` · ${item.batches.length} batches` : '';
   showSheet(`
     <div class="sheet-handle"></div>
     <div class="sheet-header"><h2>Restock ${escHtml(item.name)}</h2><button class="btn btn--icon" data-action="cancel">✕</button></div>
     <div class="sheet-body">
-      <p style="color:var(--color-text-secondary);font-size:13px;margin-bottom:16px">Currently: <strong>${item.quantity} ${escHtml(item.unit)}</strong></p>
+      <p style="color:var(--color-text-secondary);font-size:13px;margin-bottom:16px">On hand: <strong>${item.quantity} ${escHtml(item.unit)}</strong>${batchNote}</p>
       <div class="form-row"><div class="input-group"><label class="input-label">Amount added</label>
         <input class="input" id="restockAmt" type="number" min="1" step="1" value="1" inputmode="numeric" style="text-align:center;font-size:18px">
       </div></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
         ${[1,2,3].map(n => `<button class="chip" data-restock-chip="${n}">+${n} ${escHtml(item.unit)}</button>`).join('')}
       </div>
+      <div class="form-row" style="margin-top:16px"><div class="input-group"><label class="input-label">New use-by date</label>
+        <input class="input" id="restockUseBy" type="date" value="${defaultUseBy}">
+      </div></div>
     </div>
     <div class="sheet-footer">
       <button class="btn btn--ghost" style="flex:1" data-action="cancel">Cancel</button>
@@ -984,24 +1042,26 @@ function showRestockSheet(item, onSaved) {
     document.getElementById('restockSaveBtn')?.addEventListener('click', () => {
       const amt = parseFloat(document.getElementById('restockAmt')?.value) || 0;
       if (amt <= 0) return;
-      const newQty = Math.round((item.quantity + amt) * 100) / 100;
-      updateInventoryItem(item.id, { quantity: newQty });
+      const useBy = document.getElementById('restockUseBy')?.value || defaultUseBy;
+      addBatch(item.id, amt, today(), useBy);
       hideSheet();
-      showToast(`${item.name}: now ${newQty} ${item.unit}`);
+      const newTotal = Math.round((item.quantity + amt) * 100) / 100;
+      showToast(`${item.name}: now ${newTotal} ${item.unit}`);
       if (onSaved) onSaved();
     });
   }, 50);
 }
 
 function invHandleRestock(id) {
-  const item = getInventoryItem(id);
-  if (!item) return;
-  showRestockSheet(item, () => { renderInventory(); refreshHome(); });
+  const raw = getInventoryItem(id);
+  if (!raw) return;
+  showRestockSheet(normalizeBatches({ ...raw }), () => { renderInventory(); refreshHome(); });
 }
 
 function openEditSheet(id) {
-  const item = getInventoryItem(id);
-  if (!item) return;
+  const raw = getInventoryItem(id);
+  if (!raw) return;
+  const item = normalizeBatches({ ...raw });
   const catOpts  = CATEGORIES.map(c => `<option value="${c}" ${c===item.category?'selected':''}>${c}</option>`).join('');
   const isCustomUnit = !ALL_UNITS.slice(0,-1).includes(item.unit);
   showSheet(`
@@ -1042,6 +1102,9 @@ function openEditSheet(id) {
         intendedFor:  el.querySelector('#editIntendedFor').value.trim(),
       };
       if (!changes.name) return;
+      if (changes.quantity !== item.quantity || changes.useByDate !== item.useByDate) {
+        changes.batches = [{ qty: changes.quantity, dateFrozen: changes.dateFrozen, useByDate: changes.useByDate }];
+      }
       updateInventoryItem(item.id, changes);
       hideSheet();
       renderInventory();
@@ -1250,7 +1313,7 @@ function handleAddSave() {
       </div>`, {});
     setTimeout(() => {
       document.getElementById('addToExisting')?.addEventListener('click', () => {
-        updateInventoryItem(ex.id, { quantity: ex.quantity + _addQuantity });
+        addBatch(ex.id, _addQuantity, dateFrozen, useByDate);
         hideSheet(); addResetForm();
         showToast(`Added ${_addQuantity} to existing ${escHtml(ex.name)}`);
         if (_invContainer) refreshInventory();
@@ -1973,11 +2036,12 @@ function showScanConfirmSheet(displayName, item, otherCandidates, upc) {
     document.getElementById('scanRestockBtn')?.addEventListener('click', () => {
       const amt = parseFloat(document.getElementById('scanRestockAmt')?.value) || 0;
       if (amt <= 0) return;
-      const newQty = Math.round((item.quantity + amt) * 100) / 100;
       const upcs = [...new Set([...(item.upcs || []), upc])];
-      updateInventoryItem(item.id, { quantity: newQty, upcs });
+      const defMonths = (getSettings().categoryDefaults?.[item.category] || CATEGORY_DEFAULTS_MONTHS[item.category] || 3);
+      addBatch(item.id, amt, today(), addMonths(today(), defMonths), { upcs });
       hideSheet(); renderInventory(); refreshHome();
-      showToast(`Restocked ${item.name} — now ${newQty} ${item.unit}`);
+      const newTotal = normalizeBatches({ ...getInventoryItem(item.id) }).quantity;
+      showToast(`Restocked ${item.name} — now ${newTotal} ${item.unit}`);
     });
     document.getElementById('scanNotThis')?.addEventListener('click', () => {
       hideSheet();
