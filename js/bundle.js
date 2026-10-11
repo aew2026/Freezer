@@ -1440,6 +1440,14 @@ function mountShopping(el) {
     if (cb) { toggleShoppingItem(cb.dataset.id); renderShoppingList(); }
   });
   list.addEventListener('click', e => {
+    const addRecent = e.target.closest('[data-add-recent]');
+    if (addRecent) {
+      const name = addRecent.dataset.addRecent;
+      const known = getItemByName(name);
+      addShoppingItem({ name, category: known?.category || addRecent.dataset.recentCat || null });
+      renderShoppingList();
+      return;
+    }
     const del = e.target.closest('.shopping-item__delete');
     if (del) { removeShoppingItem(del.dataset.id); renderShoppingList(); return; }
     // Tap note text or "+ note" to edit inline
@@ -1472,33 +1480,47 @@ function renderShoppingList() {
   const list = _shopContainer?.querySelector('#shopList');
   if (!list) return;
   const items = getShoppingList();
-  if (!items.length) {
-    list.innerHTML = `<div class="empty-state"><div class="empty-state__icon">🛒</div><div class="empty-state__title">Your list is empty</div><div class="empty-state__subtitle">Add items to buy at the store</div></div>`;
-    return;
-  }
-  const uncompleted = items.filter(i => !i.completed);
-  const completed   = items.filter(i => i.completed);
-  const grouped     = groupBy(uncompleted, i => i.category || 'Other');
   let html = '';
-  CATEGORIES.forEach(cat => {
-    const catItems = grouped[cat];
-    if (!catItems || !catItems.length) return;
-    html += `<div class="section-header">${CATEGORY_ICONS[cat]} ${cat}</div><div class="settings-item" style="margin-bottom:8px">`;
-    catItems.forEach(item => { html += renderShopItem(item); });
-    html += `</div>`;
-  });
-  // Items with no category
-  // Only truly unknown categories — null/undefined are already bucketed under 'Other' by groupBy above
-  const noCat = uncompleted.filter(i => i.category && !CATEGORIES.includes(i.category));
-  if (noCat.length) {
-    html += `<div class="section-header">📦 Other</div><div class="settings-item" style="margin-bottom:8px">`;
-    noCat.forEach(item => { html += renderShopItem(item); });
-    html += `</div>`;
+  if (!items.length) {
+    html = `<div class="empty-state"><div class="empty-state__icon">🛒</div><div class="empty-state__title">Your list is empty</div><div class="empty-state__subtitle">Add items to buy at the store</div></div>`;
+  } else {
+    const uncompleted = items.filter(i => !i.completed);
+    const completed   = items.filter(i => i.completed);
+    const grouped     = groupBy(uncompleted, i => i.category || 'Other');
+    CATEGORIES.forEach(cat => {
+      const catItems = grouped[cat];
+      if (!catItems || !catItems.length) return;
+      html += `<div class="section-header">${CATEGORY_ICONS[cat]} ${cat}</div><div class="settings-item" style="margin-bottom:8px">`;
+      catItems.forEach(item => { html += renderShopItem(item); });
+      html += `</div>`;
+    });
+    const noCat = uncompleted.filter(i => i.category && !CATEGORIES.includes(i.category));
+    if (noCat.length) {
+      html += `<div class="section-header">📦 Other</div><div class="settings-item" style="margin-bottom:8px">`;
+      noCat.forEach(item => { html += renderShopItem(item); });
+      html += `</div>`;
+    }
+    if (completed.length) {
+      html += `<div class="section-header" style="margin-top:16px">✓ Done</div><div class="settings-item" style="margin-bottom:8px">`;
+      completed.forEach(item => { html += renderShopItem(item); });
+      html += `</div>`;
+    }
   }
-  if (completed.length) {
-    html += `<div class="section-header" style="margin-top:16px">✓ Done</div><div class="settings-item" style="margin-bottom:8px">`;
-    completed.forEach(item => { html += renderShopItem(item); });
-    html += `</div>`;
+  // Recently used up — last 5 fully-consumed items not already on the active list
+  const recentLog = getUseLog().slice(0, 5);
+  if (recentLog.length) {
+    const activeNames = new Set(items.filter(i => !i.completed).map(i => normalizeName(i.name)));
+    const toShow = recentLog.filter(e => !activeNames.has(normalizeName(e.name)));
+    if (toShow.length) {
+      html += `<div class="section-header" style="margin-top:16px;opacity:0.7">↩ Recently used up</div><div class="settings-item" style="margin-bottom:8px">`;
+      toShow.forEach(e => {
+        html += `<div class="shopping-item" style="opacity:0.65">
+          <div style="flex:1;min-width:0"><div class="shopping-item__name">${escHtml(e.name)}</div></div>
+          <button class="btn btn--ghost" style="font-size:13px;padding:4px 10px;flex-shrink:0" data-add-recent="${escHtml(e.name)}" data-recent-cat="${escHtml(e.category||'')}">＋ Add</button>
+        </div>`;
+      });
+      html += `</div>`;
+    }
   }
   list.innerHTML = html;
 }
